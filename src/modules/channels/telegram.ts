@@ -1,0 +1,145 @@
+/**
+ * Telegram Bot API client for Pixel Art B2C.
+ * Used for testing the agent flow before moving to ManyChat/WhatsApp.
+ */
+
+const getApiBase = () => `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}`;
+
+export interface TelegramUpdate {
+  update_id: number;
+  message?: {
+    message_id: number;
+    from: {
+      id: number;
+      first_name: string;
+      last_name?: string;
+      username?: string;
+    };
+    chat: {
+      id: number;
+      type: string;
+    };
+    date: number;
+    text?: string;
+    photo?: Array<{
+      file_id: string;
+      file_unique_id: string;
+      width: number;
+      height: number;
+      file_size?: number;
+    }>;
+    caption?: string;
+  };
+}
+
+/**
+ * Sends a text message to a Telegram chat.
+ */
+export async function sendMessage(
+  chatId: number | string,
+  text: string,
+  parseMode: "Markdown" | "HTML" = "Markdown"
+): Promise<boolean> {
+  try {
+    const response = await fetch(`${getApiBase()}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text,
+        parse_mode: parseMode,
+      }),
+    });
+
+    const result = await response.json();
+    if (!result.ok) {
+      console.error("❌ [TELEGRAM API ERROR] sendMessage:", JSON.stringify(result, null, 2));
+    }
+    return result.ok === true;
+  } catch (error) {
+    console.error("Error sending Telegram message:", error);
+    return false;
+  }
+}
+
+/**
+ * Sends a photo (by URL) to a Telegram chat.
+ */
+export async function sendPhoto(
+  chatId: number | string,
+  photoUrl: string,
+  caption?: string
+): Promise<boolean> {
+  try {
+    const response = await fetch(`${getApiBase()}/sendPhoto`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: chatId,
+        photo: photoUrl,
+        caption,
+        parse_mode: "Markdown",
+      }),
+    });
+
+    const result = await response.json();
+    if (!result.ok) {
+      console.error("❌ [TELEGRAM API ERROR] sendPhoto:", JSON.stringify(result, null, 2));
+    }
+    return result.ok === true;
+  } catch (error) {
+    console.error("Error sending Telegram photo:", error);
+    return false;
+  }
+}
+
+/**
+ * Gets the download URL for a Telegram file by file_id.
+ */
+export async function getFileUrl(fileId: string): Promise<string | null> {
+  try {
+    const response = await fetch(`${getApiBase()}/getFile`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ file_id: fileId }),
+    });
+
+    const result = await response.json();
+
+    if (result.ok && result.result?.file_path) {
+      return `https://api.telegram.org/file/bot${process.env.TELEGRAM_BOT_TOKEN}/${result.result.file_path}`;
+    }
+
+    return null;
+  } catch (error) {
+    console.error("Error getting Telegram file:", error);
+    return null;
+  }
+}
+
+/**
+ * Sets the webhook URL for the Telegram bot.
+ * Call this once during setup to register your webhook endpoint.
+ */
+export async function setWebhook(webhookUrl: string): Promise<boolean> {
+  const secretToken = process.env.TELEGRAM_WEBHOOK_SECRET;
+
+  try {
+    const response = await fetch(`${getApiBase()}/setWebhook`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        url: webhookUrl,
+        allowed_updates: ["message"],
+        secret_token: secretToken, // Se envía el token aquí
+      }),
+    });
+
+    const result = await response.json();
+    console.log("Telegram setWebhook response:", result);
+    return result.ok === true;
+  } catch (error) {
+    console.error("Error setting Telegram webhook:", error);
+    return false;
+  }
+}

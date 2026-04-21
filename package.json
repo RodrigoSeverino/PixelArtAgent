@@ -1,0 +1,31 @@
+{
+  "name": "pixel-art-agent",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "set-webhook": "tsx scratch/set-webhook.js",
+    "get-webhook-info": "tsx scratch/get-webhook-info.js"
+  },
+  "dependencies": {
+    "next": "16.2.3",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "ai": "^6.0.162",
+    "@ai-sdk/openai": "^3.0.53",
+    "@supabase/supabase-js": "^2.103.0",
+    "dotenv": "^16.4.5"
+  },
+  "devDependencies": {
+    "typescript": "^5",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.3",
+    "tsx": "^4.7.1"
+  }
+}

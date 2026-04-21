@@ -27,13 +27,13 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     // Validar Secret Token para seguridad
-    const secretFromTelegram = request.headers.get("X-Telegram-Bot-Api-Secret-Token");
-    const mySecret = process.env.TELEGRAM_WEBHOOK_SECRET;
+    const secretFromTelegram = (request.headers.get("X-Telegram-Bot-Api-Secret-Token") || "").trim();
+    const mySecret = (process.env.TELEGRAM_WEBHOOK_SECRET || "").trim();
 
     if (mySecret && secretFromTelegram !== mySecret) {
       console.error("❌ [WEBHOOK] Unauthorized: Secret token mismatch or missing.");
-      console.log("Header recibido:", secretFromTelegram);
-      console.log("Token esperado (de .env.local):", mySecret);
+      console.log(`Header recibido: "${secretFromTelegram}" (length: ${secretFromTelegram.length})`);
+      console.log(`Token esperado: "${mySecret}" (length: ${mySecret.length})`);
       return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
     }
 

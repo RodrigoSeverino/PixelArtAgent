@@ -22,15 +22,15 @@ function extractMeasurementsFromText(
   const unit = `\\s*(?:mts?|metr[oa]s?|mt|m|cm)?\\s*`;
   const sep = `(?:x|por|\\*|,)`;
 
-  const regex = new RegExp(`${num}${unit}${sep}${unit}${num}${unit}`, "i");
-  const match = text.match(regex);
+  // --- Formato clásico: "2x1", "2 por 1", "2.5m x 1.8m" ---
+  const classicRegex = new RegExp(`${num}${unit}${sep}${unit}${num}${unit}`, "i");
+  const classicMatch = text.match(classicRegex);
 
-  if (match) {
-    let w = parseFloat(match[1].replace(",", "."));
-    let h = parseFloat(match[2].replace(",", "."));
+  if (classicMatch) {
+    let w = parseFloat(classicMatch[1].replace(",", "."));
+    let h = parseFloat(classicMatch[2].replace(",", "."));
 
     const lowerText = text.toLowerCase();
-
     if (
       (lowerText.includes("cm") ||
         lowerText.includes("centimetro") ||
@@ -43,7 +43,32 @@ function extractMeasurementsFromText(
       h = h / 100;
     }
 
-    return w > 0 && h > 0 ? { w, h } : null;
+    if (w > 0 && h > 0) return { w, h };
+  }
+
+  // --- Formato natural: "1.20 de alto por 0.60 de ancho" / "alto 1.20 ancho 0.60" ---
+  // Captura "NUMERO ... alto/ancho ... NUMERO" en cualquier orden
+  const naturalAltoPrimero = new RegExp(
+    `${num}[^\\d]{0,20}?alt[oa][^\\d]{0,20}?(?:y|,|po[rt]|x)?[^\\d]{0,20}${num}[^\\d]{0,20}?anch[oa]`,
+    "i"
+  );
+  const naturalAnchoPrimero = new RegExp(
+    `${num}[^\\d]{0,20}?anch[oa][^\\d]{0,20}?(?:y|,|po[rt]|x)?[^\\d]{0,20}${num}[^\\d]{0,20}?alt[oa]`,
+    "i"
+  );
+
+  const altoPrimeroMatch = text.match(naturalAltoPrimero);
+  if (altoPrimeroMatch) {
+    const h = parseFloat(altoPrimeroMatch[1].replace(",", "."));
+    const w = parseFloat(altoPrimeroMatch[2].replace(",", "."));
+    if (w > 0 && h > 0) return { w, h };
+  }
+
+  const anchoPrimeroMatch = text.match(naturalAnchoPrimero);
+  if (anchoPrimeroMatch) {
+    const w = parseFloat(anchoPrimeroMatch[1].replace(",", "."));
+    const h = parseFloat(anchoPrimeroMatch[2].replace(",", "."));
+    if (w > 0 && h > 0) return { w, h };
   }
 
   return null;
@@ -371,6 +396,12 @@ export async function processAgentTurn(
   }
 
   if (needsQuote) {
+    // Fallback final: si localM2 sigue null, usar lo que tenga el contexto
+    if (!localM2 && context.squareMeters) {
+      localM2 = context.squareMeters;
+      console.log(`📦 [QUOTE-GATE] Usando squareMeters del contexto: ${localM2} m²`);
+    }
+
     const hasMeasurements = Boolean(localM2);
     const hasSurface = Boolean(localSurfaceType);
     const hasScenario = Boolean(localScenario);

@@ -22,7 +22,10 @@ export async function generateQuotePDF(
   params: QuotePDFParams
 ): Promise<Buffer> {
   return new Promise((resolve, reject) => {
-    const doc = new PDFDocument({ size: "A4", margin: 50 });
+    const doc = new PDFDocument({ 
+      size: "A4", 
+      margins: { top: 50, left: 50, right: 50, bottom: 0 } 
+    });
 
     const chunks: Buffer[] = [];
     doc.on("data", (chunk: Buffer) => chunks.push(chunk));

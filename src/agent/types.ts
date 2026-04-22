@@ -93,6 +93,9 @@ export interface AgentResponse {
   /** URLs de imágenes para enviar al cliente */
   images: string[];
 
+  /** URLs de documentos (PDFs) para enviar al cliente */
+  documents: string[];
+
   /** Nueva etapa del lead después de esta interacción */
   newStage: LeadStage | "STAY";
 

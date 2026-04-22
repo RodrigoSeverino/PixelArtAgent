@@ -2,10 +2,12 @@ import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { buildLeadRecord } from "@/lib/lead";
 import { processAgentTurn } from "@/agent/index";
+import { appendToHistory } from "@/lib/redis";
 import type { LeadContext, IncomingMessage } from "@/agent/types";
 import {
   sendMessage,
   sendPhoto,
+  sendDocument,
   getFileUrl,
   type TelegramUpdate,
 } from "@/modules/channels/telegram";
@@ -147,29 +149,30 @@ export async function POST(request: Request) {
       const agentResponse = await processAgentTurn(leadId, context, incomingMsg);
       console.log("✅ [AGENTE] Respuesta generada exitosamente. Enviando...");
 
-      // Guardar el mensaje del usuario en el historial
-      await supabase.from("b2c_conversation_history").insert({
-        lead_id: leadId,
-        role: "user",
-        content: incomingMsg.hasPhoto ? `[FOTO ENVIADA]\n${text}` : text,
-      });
+      // Guardar el mensaje del usuario en Redis (caché de sesión)
+      await appendToHistory(
+        leadId,
+        "user",
+        incomingMsg.hasPhoto ? `[FOTO ENVIADA]\n${text}` : text
+      );
 
       // El agente puede retornar múltiples mensajes de texto o imágenes
       for (const reply of agentResponse.messages) {
         console.log(`✉️ [OUT] ${reply}`);
         await sendMessage(chatId, reply);
-        
-        // Guardar la respuesta del modelo en historial
-        await supabase.from("b2c_conversation_history").insert({
-          lead_id: leadId,
-          role: "assistant",
-          content: reply,
-        });
+
+        // Guardar la respuesta del modelo en Redis (caché de sesión)
+        await appendToHistory(leadId, "assistant", reply);
       }
 
       for (const img of agentResponse.images) {
         console.log(`🖼️ [OUT] URL Imagen: ${img}`);
         await sendPhoto(chatId, img);
+      }
+
+      for (const docUrl of agentResponse.documents) {
+        console.log(`📄 [OUT] URL Documento: ${docUrl}`);
+        await sendDocument(chatId, docUrl);
       }
 
     } catch (agentError) {

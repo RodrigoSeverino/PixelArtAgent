@@ -1,6 +1,10 @@
 import { generateText } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { supabase } from "@/lib/supabase";
+import { getConversationHistory } from "@/lib/redis";
+import { generateQuotePDF } from "@/lib/pdf";
+import { uploadAsset } from "@/lib/storage";
+import { getGuideImageUrl } from "@/lib/guides";
 import type { IncomingMessage, AgentResponse, LeadContext } from "./types";
 import { buildSystemPrompt } from "./system-prompt";
 import { calculateQuote } from "@/lib/pricing";
@@ -145,22 +149,9 @@ export async function processAgentTurn(
     }
   }
 
-  // 1. Recuperar historial reciente
-  const { data: historyData, error: historyFetchError } = await supabase
-    .from("b2c_conversation_history")
-    .select("role, content")
-    .eq("lead_id", leadId)
-    .order("created_at", { ascending: false })
-    .limit(20);
-
-  if (historyFetchError) {
-    console.error("❌ [HISTORY] Error recuperando historial", {
-      leadId,
-      error: historyFetchError,
-    });
-  }
-
-  const history = (historyData || []).reverse();
+  // 1. Recuperar historial de sesión activa desde Redis
+  const history = await getConversationHistory(leadId);
+  console.log(`📖 [REDIS] Historial recuperado: leadId=${leadId} | mensajes=${history.length}`);
 
   // 2. Construir el mensaje actual
   const currentContent: any[] = [
@@ -355,6 +346,30 @@ export async function processAgentTurn(
     text.includes("[[GENERATE_QUOTE]]") ||
     /presupuesto|costo|precio|monto|cotizaci[oó]n|xxxx/i.test(text);
 
+  // URL del PDF de presupuesto (se genera más adelante si aplica)
+  let pdfUrl: string | null = null;
+
+  // Imágenes guía a enviar en este turno
+  const guideImages: string[] = [];
+
+  // Enviar surface_guide cuando el agente acaba de detectar la superficie por primera vez
+  // (el contexto previo no tenía superficie, pero ahora sí)
+  const surfaceJustDetected = !context.surfaceType && Boolean(localSurfaceType);
+  if (surfaceJustDetected) {
+    const surfaceGuideUrl = await getGuideImageUrl("surface");
+    if (surfaceGuideUrl) guideImages.push(surfaceGuideUrl);
+  }
+
+  // Enviar measure_guide cuando el agente pide medidas (hay superficie pero aún no hay medidas)
+  const askingForMeasures =
+    Boolean(localSurfaceType) &&
+    !localM2 &&
+    /medid|ancho|alto|cuánto|cuanto|mide|tama[ñn]o/i.test(text);
+  if (askingForMeasures) {
+    const measureGuideUrl = await getGuideImageUrl("measure");
+    if (measureGuideUrl) guideImages.push(measureGuideUrl);
+  }
+
   if (needsQuote) {
     const hasMeasurements = Boolean(localM2);
     const hasSurface = Boolean(localSurfaceType);
@@ -451,8 +466,41 @@ export async function processAgentTurn(
 
       // IMPORTANTE: reemplazamos toda la respuesta del modelo por una salida limpia
       text =
-        `Perfecto, ya tengo todo lo necesario para avanzar.\n\n${quoteCard}\n\n` +
+        `¡Perfecto! Aquí tenés tu presupuesto oficial. Te lo envío también como PDF para que lo puedas guardar. 📋\n\n` +
         `Si querés, podemos seguir por este mismo chat para dejar asentado el diseño elegido y los próximos pasos.`;
+
+      // Generar y subir PDF del presupuesto
+      try {
+        const pdfBuffer = await generateQuotePDF({
+          customerName: context.customerName,
+          surfaceName,
+          measurements: measureDetail,
+          squareMeters: localM2!,
+          servicesStr,
+          estimatedBasePrice: quoteCalc.estimatedBasePrice,
+          estimatedInstallPrice: quoteCalc.estimatedInstallPrice,
+          estimatedExtraPrice: quoteCalc.estimatedExtraPrice,
+          estimatedTotal: total,
+          currency: quoteCalc.currency,
+          printFileScenario: localScenario!,
+        });
+
+        const { url, error: pdfUploadError } = await uploadAsset(
+          leadId,
+          `presupuesto_${Date.now()}.pdf`,
+          pdfBuffer,
+          "application/pdf"
+        );
+
+        if (pdfUploadError) {
+          console.error("❌ [PDF] Error subiendo PDF:", pdfUploadError);
+        } else {
+          pdfUrl = url;
+          console.log(`📄 [PDF] Generado y subido: ${pdfUrl}`);
+        }
+      } catch (pdfError) {
+        console.error("❌ [PDF] Error generando PDF (fallo silencioso):", pdfError);
+      }
 
       const { error: quoteUpsertError } = await supabase
         .from("b2c_quotes")
@@ -521,7 +569,8 @@ export async function processAgentTurn(
       messages.length > 0
         ? messages
         : ["He registrado los datos. ¿Cómo desea proceder?"],
-    images: [],
+    images: guideImages,
+    documents: pdfUrl ? [pdfUrl] : [],
     newStage: "STAY",
     requiresHumanReview: false,
   };

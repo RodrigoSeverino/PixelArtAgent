@@ -63,6 +63,37 @@ export async function sendMessage(
 }
 
 /**
+ * Sends a document (PDF, etc.) to a Telegram chat via a public URL.
+ */
+export async function sendDocument(
+  chatId: number | string,
+  documentUrl: string,
+  caption?: string
+): Promise<boolean> {
+  try {
+    const response = await fetch(`${getApiBase()}/sendDocument`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: chatId,
+        document: documentUrl,
+        caption: caption ?? "📄 Presupuesto oficial Pixel Art",
+        parse_mode: "Markdown",
+      }),
+    });
+
+    const result = await response.json();
+    if (!result.ok) {
+      console.error("❌ [TELEGRAM API ERROR] sendDocument:", JSON.stringify(result, null, 2));
+    }
+    return result.ok === true;
+  } catch (error) {
+    console.error("Error sending Telegram document:", error);
+    return false;
+  }
+}
+
+/**
  * Sends a photo (by URL) to a Telegram chat.
  */
 export async function sendPhoto(

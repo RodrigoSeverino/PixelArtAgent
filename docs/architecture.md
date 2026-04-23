@@ -1,6 +1,6 @@
 # Pixel Art Agent - Documentación Técnica
 
-Esta documentación describe la arquitectura, las tecnologías utilizadas y el proceso de instalación del proyecto **Pixel Art Agent**, un bot automatizado para ventas por Telegram especializado en la cotización de ploteos y vinilos decorativos.
+Esta documentación describe la arquitectura, las tecnologías utilizadas y el proceso de instalación del proyecto **Pixel Art Agent**, un bot automatizado para ventas por Telegram especializado en la cotización de vinilos decorativos.
 
 ---
 
@@ -10,29 +10,29 @@ El proyecto está construido sobre un stack moderno, serverless y altamente esca
 
 ### Core Frameworks
 * **[Next.js (App Router)](https://nextjs.org/)**: Framework principal.
-  * *¿Por qué?* Permite exponer endpoints de API de forma sencilla (`/api/telegram/webhook`) integrándose perfectamente con un entorno Serverless como Vercel, eliminando la necesidad de mantener un servidor (como Express) encendido 24/7.
+  * Permite exponer endpoints de API de forma sencilla (`/api/telegram/webhook`) integrándose perfectamente con un entorno Serverless como Vercel, eliminando la necesidad de mantener un servidor (como Express) encendido 24/7.
 * **[TypeScript](https://www.typescriptlang.org/)**: Lenguaje principal.
-  * *¿Por qué?* Aporta tipado estático, reduciendo errores en tiempo de ejecución (especialmente crítico al manejar payloads variables de APIs de terceros como Telegram o Supabase).
+  - Aporta tipado estático, reduciendo errores en tiempo de ejecución (especialmente crítico al manejar payloads variables de APIs de terceros como Telegram o Supabase).
 
 ### Inteligencia Artificial
 * **[Vercel AI SDK](https://sdk.vercel.ai/) & [OpenAI](https://openai.com/)**: Motor del agente.
-  * *¿Por qué?* El SDK de Vercel simplifica la interacción con modelos LLM. Utilizamos llamadas con soporte para `tools` (function calling) que permite al modelo estructurar respuestas, extraer información (medidas, superficies) de forma determinista sin depender de que el LLM parsee texto crudo correctamente.
+  - El SDK de Vercel simplifica la interacción con modelos LLM. Utilizamos llamadas con soporte para `tools` (function calling) que permite al modelo estructurar respuestas, extraer información (medidas, superficies) de forma determinista sin depender de que el LLM parsee texto crudo correctamente.
 
 ### Base de Datos y Almacenamiento
 * **[Supabase (PostgreSQL)](https://supabase.com/)**: Base de datos relacional y almacenamiento en la nube.
-  * *¿Por qué?* Es un backend-as-a-service robusto. Usamos la BD para guardar el estado del negocio (`leads`, `quotes`, `measurements`) para tener persistencia a largo plazo, métricas y reportes. Su módulo de *Storage* se utiliza para alojar y servir archivos dinámicos y fijos (imágenes de guías, fotos enviadas por el usuario, PDFs generados).
+  - Es un backend-as-a-service robusto. Usamos la BD para guardar el estado del negocio (`leads`, `quotes`, `measurements`) para tener persistencia a largo plazo, métricas y reportes. Su módulo de *Storage* se utiliza para alojar y servir archivos dinámicos y fijos (imágenes de guías, fotos enviadas por el usuario, PDFs generados).
 
 ### Caché y Estado de Sesión
 * **[Upstash Redis](https://upstash.com/)**: Base de datos clave-valor en memoria.
-  * *¿Por qué?* En un entorno serverless, la memoria entre peticiones se pierde. Redis nos permite guardar el historial de la conversación (caché temporal de 90 minutos) de forma ultra rápida sin sobrecargar la base de datos relacional (Supabase) con cada mensaje de "hola" del usuario.
+  - En un entorno serverless, la memoria entre peticiones se pierde. Redis nos permite guardar el historial de la conversación (caché temporal de 90 minutos) de forma ultra rápida sin sobrecargar la base de datos relacional (Supabase) con cada mensaje de "hola" del usuario.
 
 ### Generación de Documentos
 * **[PDFKit](https://pdfkit.org/)**: Librería generadora de PDF.
-  * *¿Por qué?* Es la solución más estable para construir documentos en el lado del servidor sin necesitar un navegador headless (como Puppeteer, que pesa demasiado para Vercel). Permite dibujar con precisión el layout del presupuesto final que se enviará al cliente.
+  - Es la solución más estable para construir documentos en el lado del servidor sin necesitar un navegador headless. Permite dibujar con precisión el layout del presupuesto final que se enviará al cliente.
 
 ### Infraestructura
 * **[Vercel](https://vercel.com/)**: Plataforma de despliegue.
-  * *¿Por qué?* Ofrece despliegues automáticos desde Git, gestión de variables de entorno y ejecuta las rutas de Next.js como *Serverless Functions* globales, reduciendo los costos de infraestructura casi a cero si el tráfico es moderado.
+  - Ofrece despliegues automáticos desde Git, gestión de variables de entorno y ejecuta las rutas de Next.js como *Serverless Functions* globales, reduciendo los costos de infraestructura casi a cero si el tráfico es moderado.
 
 ---
 

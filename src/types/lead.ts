@@ -14,8 +14,11 @@ export const LEAD_STAGES = [
   "MEASUREMENTS_RECEIVED",
   "PRINT_FILE_SCENARIO_SELECTED",
   "QUOTE_READY",
+  "QUOTE_GENERATED",
+  "BLOCKED",
   "REQUIRES_HUMAN_REVIEW",
-  "CLOSED",
+  "CLOSED_WON",
+  "CLOSED_LOST",
 ] as const;
 
 export type LeadStage = (typeof LEAD_STAGES)[number];

@@ -10,10 +10,16 @@ import { buildSystemPrompt } from "./system-prompt";
 import { calculateQuote } from "@/lib/pricing";
 import { SURFACE_LABELS, type SurfaceType } from "@/types/surface";
 import type { PrintFileScenario } from "@/types/quote";
+import type { LeadStage } from "@/types/lead";
+
+// ═══════════════════════════════════════════════════════════════════════════
+// UTILIDADES DE EXTRACCIÓN (REGEX)
+// ═══════════════════════════════════════════════════════════════════════════
 
 /**
  * Intenta extraer medidas (W y H) de un texto cualquiera usando Regex.
- * Soporta formatos: "2x1", "2 x 1", "2mts x 1mts", "2.5m x 1.8m", etc.
+ * Soporta formatos: "2x1", "2 x 1", "2mts x 1mts", "2.5m x 1.8m",
+ * "1.20 de alto por 0.60 de ancho", "150cm x 80cm", etc.
  */
 function extractMeasurementsFromText(
   text: string
@@ -47,7 +53,6 @@ function extractMeasurementsFromText(
   }
 
   // --- Formato natural: "1.20 de alto por 0.60 de ancho" / "alto 1.20 ancho 0.60" ---
-  // Captura "NUMERO ... alto/ancho ... NUMERO" en cualquier orden
   const naturalAltoPrimero = new RegExp(
     `${num}[^\\d]{0,20}?alt[oa][^\\d]{0,20}?(?:y|,|po[rt]|x)?[^\\d]{0,20}${num}[^\\d]{0,20}?anch[oa]`,
     "i"
@@ -121,11 +126,42 @@ function cleanAssistantText(text: string): string {
   return text
     .replace(/\[\[GENERATE_QUOTE\]\]/g, "")
     .replace(/\[\[SET_.*?\]\]/g, "")
+    .replace(/\[\[BLOCK:.*?\]\]/g, "")
     .replace(/^\s*\(.*?cotizaci[oó]n.*?\)\s*$/gim, "")
     .replace(/^\s*\(.*?b[uú]squeda.*?im[aá]genes.*?\)\s*$/gim, "")
     .replace(/XXXX|\[.*?\]|incluya el monto.*?aquí|precio real calculado/gi, "")
     .trim();
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// STATUS TRACKING
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Actualiza la columna `current_stage` de un lead en Supabase.
+ * Solo avanza hacia adelante en el embudo (no retrocede).
+ */
+async function updateLeadStatus(leadId: string, newStage: LeadStage): Promise<void> {
+  const now = new Date().toISOString();
+
+  const { error } = await supabase
+    .from("b2c_leads")
+    .update({ current_stage: newStage, updated_at: now })
+    .eq("id", leadId);
+
+  if (error) {
+    console.error(`❌ [STATUS] Error actualizando stage a ${newStage}:`, {
+      leadId,
+      error,
+    });
+  } else {
+    console.log(`📊 [STATUS] Lead ${leadId} → ${newStage}`);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MOTOR PRINCIPAL DEL AGENTE
+// ═══════════════════════════════════════════════════════════════════════════
 
 export async function processAgentTurn(
   leadId: string,
@@ -172,6 +208,9 @@ export async function processAgentTurn(
         error: measurementUpsertError,
       });
     }
+
+    // Status tracking: medidas recibidas
+    await updateLeadStatus(leadId, "MEASUREMENTS_RECEIVED");
   }
 
   // 1. Recuperar historial de sesión activa desde Redis
@@ -202,7 +241,35 @@ export async function processAgentTurn(
 
   let text = result.text;
 
-  // --- 1. PARSER DE MEDIDAS (AI RESPONSE) ---
+  // ═══════════════════════════════════════════════════════════════════════
+  // PARSER DE BLOQUEO (DEBE IR PRIMERO)
+  // ═══════════════════════════════════════════════════════════════════════
+  const blockMatch = text.match(/\[\[BLOCK:(\w+)\]\]/i);
+  if (blockMatch) {
+    console.log(`🚫 [BLOCK] Bloqueo detectado: ${blockMatch[1]}`);
+    await updateLeadStatus(leadId, "BLOCKED");
+
+    // En modo bloqueado, limpiamos el texto y retornamos directamente
+    const finalCleanup = cleanAssistantText(text);
+    const messages = finalCleanup
+      .split(/\s*---\s*/)
+      .map((m) => m.trim())
+      .filter((m) => m.length > 0);
+
+    return {
+      messages: messages.length > 0
+        ? messages
+        : ["Lamentablemente la superficie no está en condiciones óptimas para el trabajo. Te recomendamos consultar con un técnico para evaluar alternativas."],
+      images: [],
+      documents: [],
+      newStage: "BLOCKED",
+      requiresHumanReview: true,
+    };
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // PARSER DE MEDIDAS (AI RESPONSE)
+  // ═══════════════════════════════════════════════════════════════════════
   const mMatch = text.match(
     /\[\[SET_MEASUREMENTS:\s*W:\s*([\d.]+)\s*,\s*H:\s*([\d.]+)\s*\]\]/i
   );
@@ -264,9 +331,14 @@ export async function processAgentTurn(
         error: consolidatedMeasurementError,
       });
     }
+
+    // Status tracking: medidas recibidas
+    await updateLeadStatus(leadId, "MEASUREMENTS_RECEIVED");
   }
 
-  // --- 2. PARSER DE ESCENARIO Y SUPERFICIE (PARA ESTE TURNO) ---
+  // ═══════════════════════════════════════════════════════════════════════
+  // PARSER DE ESCENARIO Y SUPERFICIE (PARA ESTE TURNO)
+  // ═══════════════════════════════════════════════════════════════════════
   let localSurfaceType = context.surfaceType ?? null;
   let localScenario = context.printFileScenario ?? null;
   let isFullObject = context.isFullObject ?? false;
@@ -290,6 +362,11 @@ export async function processAgentTurn(
         },
         { onConflict: "lead_id" }
       );
+
+    // Status tracking: superficie seleccionada
+    if (!context.surfaceType) {
+      await updateLeadStatus(leadId, "SURFACE_SELECTED");
+    }
   }
 
   const userScenario = extractScenarioFromText(incomingMsg.text);
@@ -326,6 +403,9 @@ export async function processAgentTurn(
         error: surfaceUpsertError,
       });
     }
+
+    // Status tracking: superficie seleccionada
+    await updateLeadStatus(leadId, "SURFACE_SELECTED");
   }
 
   const pMatch = text.match(/\[\[SET_PRINT:\s*(\w+)\s*\]\]/i);
@@ -364,9 +444,14 @@ export async function processAgentTurn(
         error: scenarioUpsertError,
       });
     }
+
+    // Status tracking: escenario seleccionado
+    await updateLeadStatus(leadId, "PRINT_FILE_SCENARIO_SELECTED");
   }
 
-  // --- 3. PARSER DE COTIZACIÓN (FORCE) ---
+  // ═══════════════════════════════════════════════════════════════════════
+  // PARSER DE COTIZACIÓN
+  // ═══════════════════════════════════════════════════════════════════════
   const needsQuote =
     text.includes("[[GENERATE_QUOTE]]") ||
     /presupuesto|costo|precio|monto|cotizaci[oó]n|xxxx/i.test(text);
@@ -378,7 +463,6 @@ export async function processAgentTurn(
   const guideImages: string[] = [];
 
   // Enviar surface_guide cuando el agente acaba de detectar la superficie por primera vez
-  // (el contexto previo no tenía superficie, pero ahora sí)
   const surfaceJustDetected = !context.surfaceType && Boolean(localSurfaceType);
   if (surfaceJustDetected) {
     const surfaceGuideUrl = await getGuideImageUrl("surface");
@@ -459,7 +543,7 @@ export async function processAgentTurn(
       const quoteCalc = await calculateQuote({
         surfaceType: localSurfaceType as SurfaceType,
         squareMeters: localM2!,
-        installationRequired: true, // El agente asume instalación por defecto
+        installationRequired: true,
         printFileScenario: localScenario as PrintFileScenario,
         isFullObject: isFullObject || localSurfaceType === "FRIDGE" || localSurfaceType === "VEHICLE",
       });
@@ -478,22 +562,6 @@ export async function processAgentTurn(
         localW && localH
           ? `${localW} m x ${localH} m (${localM2} m²)`
           : `${localM2} m²`;
-
-      const quoteCard =
-        `📋 **PRESUPUESTO OFICIAL PIXEL ART**\n\n` +
-        `**Detalle del pedido:**\n` +
-        `- **Tipo de trabajo:** ${surfaceName}\n` +
-        `- **Medidas:** ${measureDetail}\n` +
-        `- **Servicios:** ${servicesStr}\n\n` +
-        `**Desglose:**\n` +
-        `- Producción e instalación: $${quoteCalc.estimatedBasePrice.toLocaleString()} ${quoteCalc.currency}\n` +
-        (quoteCalc.estimatedInstallPrice > 0
-          ? `- Servicio de colocación: $${quoteCalc.estimatedInstallPrice.toLocaleString()} ${quoteCalc.currency}\n`
-          : "") +
-        (quoteCalc.estimatedExtraPrice > 0
-          ? `- Cargo por diseño/banco: $${quoteCalc.estimatedExtraPrice.toLocaleString()} ${quoteCalc.currency}\n`
-          : "") +
-        `\n💰 **TOTAL ESTIMADO: $${total.toLocaleString()} ${quoteCalc.currency}**`;
 
       // IMPORTANTE: reemplazamos toda la respuesta del modelo por una salida limpia
       text =
@@ -561,32 +629,13 @@ export async function processAgentTurn(
         });
       }
 
-      const { error: leadStageError } = await supabase
-        .from("b2c_leads")
-        .update({ current_stage: "QUOTE_GENERATED", updated_at: now })
-        .eq("id", leadId);
-
-      if (leadStageError) {
-        console.error("❌ [QUOTE] Error actualizando etapa del lead", {
-          leadId,
-          error: leadStageError,
-        });
-      }
+      // Status tracking: cotización generada
+      await updateLeadStatus(leadId, "QUOTE_GENERATED");
     }
   }
 
   if (text.includes("[[CLOSE_DEAL]]")) {
-    const { error: closeDealError } = await supabase
-      .from("b2c_leads")
-      .update({ current_stage: "CLOSED_WON", updated_at: now })
-      .eq("id", leadId);
-
-    if (closeDealError) {
-      console.error("❌ [CLOSE] Error cerrando lead", {
-        leadId,
-        error: closeDealError,
-      });
-    }
+    await updateLeadStatus(leadId, "CLOSED_WON");
   }
 
   const finalCleanup = cleanAssistantText(text);

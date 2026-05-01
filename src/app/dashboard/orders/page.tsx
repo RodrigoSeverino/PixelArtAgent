@@ -205,8 +205,17 @@ export default function OrdersPage() {
                   <td className="px-6 py-4">
                     {order.current_stage !== "CLOSED_WON" && order.current_stage !== "CLOSED_LOST" && (
                       <div className="flex gap-2">
-                        <button onClick={() => updateStage(order.id, "CLOSED_WON")} className="px-2 py-1 bg-green-900/30 text-green-400 hover:bg-green-900/50 border border-green-900 rounded text-xs transition-colors">Ganado</button>
-                        <button onClick={() => updateStage(order.id, "CLOSED_LOST")} className="px-2 py-1 bg-red-900/30 text-red-400 hover:bg-red-900/50 border border-red-900 rounded text-xs transition-colors">Cancelar</button>
+                        <button onClick={() => updateStage(order.id, "CLOSED_WON")} className="px-2 py-1 bg-green-900/30 text-green-400 hover:bg-green-900/50 border border-green-900 rounded text-xs transition-colors">Aceptar</button>
+                        <button 
+                          onClick={() => {
+                            if (window.confirm("¿Estás seguro de que deseas cancelar este pedido?")) {
+                              updateStage(order.id, "CLOSED_LOST");
+                            }
+                          }} 
+                          className="px-2 py-1 bg-red-900/30 text-red-400 hover:bg-red-900/50 border border-red-900 rounded text-xs transition-colors"
+                        >
+                          Cancelar
+                        </button>
                       </div>
                     )}
                   </td>

@@ -66,7 +66,7 @@ export default function OrdersPage() {
       return {
         id: lead.id,
         telegram_chat_id: lead.telegram_chat_id,
-        name: lead.first_name || "Cliente Telegram",
+        name: lead.full_name || "Cliente Telegram",
         current_stage: lead.current_stage,
         created_at: lead.created_at,
         observation: lead.observation,

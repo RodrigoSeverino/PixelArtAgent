@@ -26,7 +26,7 @@ function extractMeasurementsFromText(
 ): { w: number; h: number } | null {
   const num = `(\\d+(?:[.,]\\d+)?)`;
   const unit = `\\s*(?:mts?|metr[oa]s?|mt|m|cm)?\\s*`;
-  const sep = `(?:x|por|\\*|,)`;
+  const sep = `(?:x|por|\\*|,|×)`;
 
   // --- Formato clásico: "2x1", "2 por 1", "2.5m x 1.8m" ---
   const classicRegex = new RegExp(`${num}${unit}${sep}${unit}${num}${unit}`, "i");
@@ -62,15 +62,19 @@ function extractMeasurementsFromText(
 
   const altoPrimeroMatch = text.match(naturalAltoPrimero);
   if (altoPrimeroMatch) {
-    const h = parseFloat(altoPrimeroMatch[1].replace(",", "."));
-    const w = parseFloat(altoPrimeroMatch[2].replace(",", "."));
+    let h = parseFloat(altoPrimeroMatch[1].replace(",", "."));
+    let w = parseFloat(altoPrimeroMatch[2].replace(",", "."));
+    if (w > 10) w = w / 100;
+    if (h > 10) h = h / 100;
     if (w > 0 && h > 0) return { w, h };
   }
 
   const anchoPrimeroMatch = text.match(naturalAnchoPrimero);
   if (anchoPrimeroMatch) {
-    const w = parseFloat(anchoPrimeroMatch[1].replace(",", "."));
-    const h = parseFloat(anchoPrimeroMatch[2].replace(",", "."));
+    let w = parseFloat(anchoPrimeroMatch[1].replace(",", "."));
+    let h = parseFloat(anchoPrimeroMatch[2].replace(",", "."));
+    if (w > 10) w = w / 100;
+    if (h > 10) h = h / 100;
     if (w > 0 && h > 0) return { w, h };
   }
 
@@ -234,7 +238,24 @@ export async function processAgentTurn(
   ];
 
   if (incomingMsg.hasPhoto && incomingMsg.photoUrl) {
-    currentContent.push({ type: "image", image: incomingMsg.photoUrl });
+    try {
+      console.log(`[AGENT] Descargando imagen manualmente para evitar Timeout AI SDK: ${incomingMsg.photoUrl}`);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
+      
+      const res = await fetch(incomingMsg.photoUrl, { signal: controller.signal });
+      clearTimeout(timeoutId);
+      
+      if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);
+      const arrayBuffer = await res.arrayBuffer();
+      // Usar Uint8Array que es compatible con Edge y Node
+      const imageBytes = new Uint8Array(arrayBuffer);
+      currentContent.push({ type: "image", image: imageBytes });
+      console.log(`[AGENT] Imagen descargada exitosamente (${imageBytes.length} bytes)`);
+    } catch (err) {
+      console.error(`❌ [AGENT] Fallo al descargar imagen, enviando URL directa al SDK:`, err);
+      currentContent.push({ type: "image", image: incomingMsg.photoUrl });
+    }
   }
 
   const historyWithNew = [...history, { role: "user", content: currentContent }];
@@ -270,7 +291,7 @@ export async function processAgentTurn(
     return {
       messages: messages.length > 0
         ? messages
-        : ["Lamentablemente la superficie no está en condiciones óptimas para el trabajo, ya que con humedad o daño el vinilo no se adhiere bien. Un compañero de nuestro equipo técnico se pondrá en contacto contigo para ver cómo podemos ayudarte."],
+        : ["Lamentablemente la superficie no está en condiciones óptimas para el trabajo, ya que con humedad o daño el vinilo no se adhiere bien. Alguien de nuestro equipo se contactará a la brevedad para asesorarte cómo seguir."],
       images: [],
       documents: [],
       newStage: "BLOCKED",
@@ -302,14 +323,18 @@ export async function processAgentTurn(
   // Sincronizar con el contexto si todavía no tenemos nada localmente
   if (!localM2) {
     localM2 = context.squareMeters ?? null;
-
-    if (!localM2 && context.measurements) {
+  }
+  
+  // Siempre intentar recuperar W y H del contexto si existen
+  if (!localW || !localH) {
+    if (context.measurements) {
       const fromCtx = extractMeasurementsFromText(context.measurements);
-
       if (fromCtx) {
         localW = fromCtx.w;
         localH = fromCtx.h;
-        localM2 = Number((localW * localH).toFixed(2));
+        if (!localM2) {
+          localM2 = Number((localW * localH).toFixed(2));
+        }
       }
     }
   }
@@ -466,18 +491,9 @@ export async function processAgentTurn(
     // Status tracking: escenario seleccionado
     await updateLeadStatus(leadId, "PRINT_FILE_SCENARIO_SELECTED");
     
-    // HUMAN HANDOFF para CUSTOM_DESIGN
+    // HUMAN HANDOFF para CUSTOM_DESIGN - REMOVIDO para permitir cotizar sin diseño
     if (localScenario === "CUSTOM_DESIGN") {
-      console.log(`👤 [HANDOFF] Diseño personalizado solicitado. Derivando a asesor.`);
-      await updateLeadStatus(leadId, "HUMAN_HANDOFF", "Solicitó un diseño personalizado.");
-      
-      return {
-        messages: ["Para un diseño personalizado, te derivamos con uno de nuestros asesores para que nos cuentes qué tenés en mente."],
-        images: [],
-        documents: [],
-        newStage: "HUMAN_HANDOFF",
-        requiresHumanReview: true,
-      };
+      console.log(`👤 [HANDOFF] Diseño personalizado solicitado. Se avanzará para cotización parcial.`);
     }
   }
 
@@ -485,6 +501,24 @@ export async function processAgentTurn(
   const iMatch = text.match(/\[\[SET_INSTALL:\s*(true|false)\s*\]\]/i);
   if (iMatch) {
     localInstall = iMatch[1].toLowerCase() === "true";
+    
+    // Guardar instalación inmediatamente para evitar bucles de conversación
+    const { error: installUpsertError } = await supabase
+      .from("b2c_quotes")
+      .upsert(
+        {
+          lead_id: leadId,
+          surface_type: localSurfaceType || "WALL",
+          installation_required: localInstall,
+          updated_at: now,
+        },
+        { onConflict: "lead_id" }
+      );
+      
+    if (installUpsertError) {
+      console.error("❌ [INSTALL] Error guardando instalación", installUpsertError);
+    }
+    await updateLeadStatus(leadId, "INSTALLATION_SELECTED");
   }
   if (localInstall === null && context.installationRequired !== null) {
     localInstall = context.installationRequired;
@@ -517,7 +551,7 @@ export async function processAgentTurn(
       console.log(`🖼️ [IMAGE_BANK] Se enviarán ${urls.length} imágenes del banco al cliente.`);
       
       // Inyectamos un mensaje fijo para evitar que el LLM divague o invente URLs
-      text = "¡Perfecto! Te paso algunas opciones de nuestro banco de imágenes para que vayas viendo. 🖼️";
+      text = "¡Perfecto! Te paso algunas opciones de nuestro banco de imágenes para que vayas viendo. 🖼️\n\nPodés elegir la que más te guste indicándonos cuál es o reenviándonos la foto para avanzar. Esto ya incluye una tarifa de diseño fija.";
     }
   }
 
@@ -641,6 +675,11 @@ export async function processAgentTurn(
           `¡Perfecto! Aquí tenés tu presupuesto oficial preliminar. Te lo envío también como PDF para que lo puedas guardar. 📋\n\n` +
           `Dado el tamaño o las características del trabajo, este pedido requiere validación final por parte de nuestro equipo técnico, quienes confirmarán la viabilidad y el costo exacto${localInstall ? ' de instalación' : ''}.\n\n` +
           `Si querés, podemos seguir por este mismo chat para dejar asentado el diseño elegido y los próximos pasos.`;
+      } else if (localScenario === "CUSTOM_DESIGN") {
+        textBreakdown = 
+          `¡Perfecto! Aquí tenés tu presupuesto parcial. Te lo envío también como PDF para que lo puedas guardar. 📋\n\n` +
+          `El total parcial de tu pedido (impresión y ${localInstall ? 'colocación' : 'retiro'}) es de **$${total.toLocaleString("es-UY")} ${quoteCalc.currency}** sin contemplar el costo de diseño.\n\n` +
+          `Alguien de nuestro equipo de arte se va a estar contactando a la brevedad para ver el diseño acorde a lo que buscás y pasarte la cotización final de esa parte.`;
       } else {
         textBreakdown = 
           `¡Perfecto! Aquí tenés tu presupuesto oficial. Te lo envío también como PDF para que lo puedas guardar. 📋\n\n` +

@@ -134,14 +134,14 @@ REGLA CRÍTICA: Si el cliente menciona CUALQUIERA de estas palabras o situacione
 
 Entonces tu respuesta DEBE comenzar así (ejemplo literal):
 [[BLOCK:SURFACE_DAMAGE]]
-Para este tipo de superficies con humedad o detalles técnicos, alguien de nuestro equipo se contactará a la brevedad para asesorarte sobre cómo podemos seguir y darte la mejor recomendación...
+Lamentablemente la superficie no está en condiciones óptimas para el trabajo, ya que con humedad o daño el vinilo no se adhiere bien. Alguien de nuestro equipo se contactará a la brevedad para asesorarte cómo seguir.
 
 PASOS OBLIGATORIOS:
 1. PRIMERO: Escribe [[BLOCK:SURFACE_DAMAGE]] al inicio de tu respuesta. Sin este texto exacto, el sistema NO registra el bloqueo.
 2. LUEGO: Informa profesionalmente que el vinilo no tendrá buena adherencia y el trabajo no tendría garantía.
 3. Explica de forma empática que lo derivas a un asesor humano para que le dé asistencia personalizada sobre cómo proceder o arreglar la superficie.
 4. NO pidas medidas. NO pidas diseño. NO emitas [[GENERATE_QUOTE]].
-5. Cierra la conversación de forma amable, indicando que alguien de nuestro equipo se contactará a la brevedad.
+5. Cierra la conversación usando EXACTAMENTE la frase: "Alguien de nuestro equipo se contactará a la brevedad para asesorarte cómo seguir."
 
 Este bloqueo es IRREVERSIBLE en la misma conversación. No continúes el embudo de venta.
 
@@ -195,7 +195,7 @@ Reglas para validar:
 ${context.measurements
   ? `COMPLETADO — Medidas: ${context.measurements}. Salta este paso.`
   : `Solo si la superficie es apta, solicita las medidas (ancho y alto).
-IMPORTANTE: Las medidas que pides son del pedido/vinilo que quiere realizar, no de la pared en sí. Sin embargo, aclárale que puede enviar la imagen de la pared/superficie de guía para ayudarle a entender qué medir.
+IMPORTANTE: Las medidas que pides son del PEDIDO o VINILO que quiere realizar, NO de la pared en sí. Aclárale esto al cliente, y también dile que puede enviarte una foto de referencia de la pared o superficie para que lo asesores sobre cómo tomar las medidas si tiene dudas.
 
 Cuando el cliente informe medidas claras, emite internamente:
 [[SET_MEASUREMENTS: W:valor_en_metros, H:valor_en_metros]]

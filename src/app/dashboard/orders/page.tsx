@@ -2,6 +2,36 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { LEAD_STAGE_LABELS } from "@/types/lead";
+import { SURFACE_LABELS } from "@/types/surface";
+
+// ─── Labels en español ─────────────────────────────────────────────────────
+
+const PRINT_SCENARIO_LABELS: Record<string, string> = {
+  READY_FILE:    "Archivo propio",
+  IMAGE_BANK:    "Banco de imágenes",
+  CUSTOM_DESIGN: "Diseño personalizado",
+};
+
+// Colores por estado para los badges
+const STAGE_BADGE_STYLES: Record<string, string> = {
+  NEW:                           "bg-gray-800 text-gray-300",
+  INITIAL_CONTACT:               "bg-gray-800 text-gray-300",
+  SURFACE_SELECTED:              "bg-sky-900 text-sky-300",
+  SURFACE_PHOTO_REQUESTED:       "bg-sky-900 text-sky-300",
+  SURFACE_PHOTO_RECEIVED:        "bg-sky-900 text-sky-300",
+  MEASUREMENTS_REQUESTED:        "bg-blue-900 text-blue-300",
+  MEASUREMENTS_RECEIVED:         "bg-blue-900 text-blue-300",
+  PRINT_FILE_SCENARIO_SELECTED:  "bg-indigo-900 text-indigo-300",
+  INSTALLATION_SELECTED:         "bg-indigo-900 text-indigo-300",
+  QUOTE_READY:                   "bg-amber-900 text-amber-300",
+  QUOTE_GENERATED:               "bg-yellow-900 text-yellow-300",
+  BLOCKED:                       "bg-red-900 text-red-300",
+  REQUIRES_HUMAN_REVIEW:         "bg-orange-900 text-orange-300",
+  HUMAN_HANDOFF:                 "bg-purple-900 text-purple-300 border border-purple-700 animate-pulse",
+  CLOSED_WON:                    "bg-green-900 text-green-300",
+  CLOSED_LOST:                   "bg-red-950 text-red-400",
+};
 
 type Order = {
   id: string;
@@ -20,7 +50,9 @@ type Order = {
     square_meters: number;
   };
   quote?: {
-    total_price: number;
+    estimated_total: number;
+    print_file_scenario: string;
+    installation_required: boolean;
   };
   assets?: {
     asset_type: string;
@@ -35,7 +67,6 @@ export default function OrdersPage() {
 
   const fetchOrders = async () => {
     setLoading(true);
-    // Fetch leads
     const { data: leadsData, error: leadsError } = await supabase
       .from("b2c_leads")
       .select("*")
@@ -47,7 +78,6 @@ export default function OrdersPage() {
       return;
     }
 
-    // Fetch related measurements and quotes
     const leadIds = leadsData.map((l) => l.id);
 
     const [measurementsRes, quotesRes, surfaceRes, assetsRes] = await Promise.all([
@@ -85,21 +115,13 @@ export default function OrdersPage() {
     fetchOrders();
 
     const channel = supabase
-      .channel('schema-db-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'b2c_leads' }, () => {
-        fetchOrders();
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'b2c_measurements' }, () => {
-        fetchOrders();
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'b2c_quotes' }, () => {
-        fetchOrders();
-      })
+      .channel("schema-db-changes")
+      .on("postgres_changes", { event: "*", schema: "public", table: "b2c_leads" }, fetchOrders)
+      .on("postgres_changes", { event: "*", schema: "public", table: "b2c_measurements" }, fetchOrders)
+      .on("postgres_changes", { event: "*", schema: "public", table: "b2c_quotes" }, fetchOrders)
       .subscribe();
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    return () => { supabase.removeChannel(channel); };
   }, []);
 
   const updateStage = async (id: string, stage: string) => {
@@ -111,16 +133,17 @@ export default function OrdersPage() {
   };
 
   const getStatusBadge = (stage: string) => {
-    switch (stage) {
-      case "NEW": return <span className="px-2 py-1 bg-gray-800 text-gray-300 rounded-full text-xs font-medium">Nuevo</span>;
-      case "MEASUREMENTS_RECEIVED": return <span className="px-2 py-1 bg-blue-900 text-blue-300 rounded-full text-xs font-medium">Con Medidas</span>;
-      case "QUOTE_SENT": return <span className="px-2 py-1 bg-yellow-900 text-yellow-300 rounded-full text-xs font-medium">Cotizado</span>;
-      case "CLOSED_WON": return <span className="px-2 py-1 bg-green-900 text-green-300 rounded-full text-xs font-medium">Vendido</span>;
-      case "CLOSED_LOST": return <span className="px-2 py-1 bg-red-900 text-red-300 rounded-full text-xs font-medium">Perdido</span>;
-      case "HUMAN_HANDOFF": return <span className="px-2 py-1 bg-purple-900 text-purple-300 rounded-full text-xs font-medium border border-purple-700 animate-pulse">Atención Manual</span>;
-      default: return <span className="px-2 py-1 bg-gray-800 text-gray-300 rounded-full text-xs font-medium">{stage}</span>;
-    }
+    const label = LEAD_STAGE_LABELS[stage] ?? stage;
+    const styles = STAGE_BADGE_STYLES[stage] ?? "bg-gray-800 text-gray-300";
+    return (
+      <span className={`px-2 py-1 rounded-full text-xs font-medium whitespace-nowrap ${styles}`}>
+        {label}
+      </span>
+    );
   };
+
+  const getSurfaceLabel = (surfaceType: string) =>
+    SURFACE_LABELS[surfaceType as keyof typeof SURFACE_LABELS] ?? surfaceType;
 
   return (
     <div>
@@ -133,7 +156,11 @@ export default function OrdersPage() {
               <th className="px-6 py-4 font-medium">Cliente</th>
               <th className="px-6 py-4 font-medium">Chat ID</th>
               <th className="px-6 py-4 font-medium">Superficie</th>
-              <th className="px-6 py-4 font-medium">Medidas (m²)</th>
+              <th className="px-6 py-4 font-medium">Ancho (m)</th>
+              <th className="px-6 py-4 font-medium">Alto (m)</th>
+              <th className="px-6 py-4 font-medium">m²</th>
+              <th className="px-6 py-4 font-medium">Diseño</th>
+              <th className="px-6 py-4 font-medium">Entrega</th>
               <th className="px-6 py-4 font-medium">Cotización</th>
               <th className="px-6 py-4 font-medium">Estado</th>
               <th className="px-6 py-4 font-medium">Archivos</th>
@@ -145,50 +172,94 @@ export default function OrdersPage() {
           <tbody className="divide-y divide-border">
             {loading ? (
               <tr>
-                <td colSpan={9} className="px-6 py-8 text-center text-muted-foreground">
+                <td colSpan={14} className="px-6 py-8 text-center text-muted-foreground">
                   Cargando pedidos...
                 </td>
               </tr>
             ) : orders.length === 0 ? (
               <tr>
-                <td colSpan={9} className="px-6 py-8 text-center text-muted-foreground">
+                <td colSpan={14} className="px-6 py-8 text-center text-muted-foreground">
                   No hay pedidos registrados.
                 </td>
               </tr>
             ) : (
               orders.map((order) => (
                 <tr key={order.id} className="hover:bg-muted/50 transition-colors">
+                  {/* Cliente */}
                   <td className="px-6 py-4 text-foreground font-medium">{order.name}</td>
+
+                  {/* Chat ID */}
                   <td className="px-6 py-4 text-muted-foreground">{order.telegram_chat_id}</td>
-                  <td className="px-6 py-4 text-foreground font-medium capitalize">
-                    {order.surface_assessment ? order.surface_assessment.surface_type.toLowerCase().replace(/_/g, ' ') : <span className="text-muted-foreground italic font-normal">No definida</span>}
+
+                  {/* Superficie */}
+                  <td className="px-6 py-4 text-foreground font-medium">
+                    {order.surface_assessment
+                      ? getSurfaceLabel(order.surface_assessment.surface_type)
+                      : <span className="text-muted-foreground italic font-normal">No definida</span>
+                    }
                   </td>
+
+                  {/* Ancho */}
                   <td className="px-6 py-4 text-foreground">
-                    {order.measurements ? (
-                      `${order.measurements.width_meters} x ${order.measurements.height_meters} (${order.measurements.square_meters}m²)`
-                    ) : (
-                      <span className="text-muted-foreground italic">N/A</span>
-                    )}
+                    {order.measurements
+                      ? `${order.measurements.width_meters} m`
+                      : <span className="text-muted-foreground italic">—</span>}
                   </td>
+
+                  {/* Alto */}
+                  <td className="px-6 py-4 text-foreground">
+                    {order.measurements
+                      ? `${order.measurements.height_meters} m`
+                      : <span className="text-muted-foreground italic">—</span>}
+                  </td>
+
+                  {/* m² */}
+                  <td className="px-6 py-4 text-foreground">
+                    {order.measurements
+                      ? `${order.measurements.square_meters} m²`
+                      : <span className="text-muted-foreground italic">—</span>}
+                  </td>
+
+                  {/* Diseño */}
+                  <td className="px-6 py-4 text-foreground">
+                    {order.quote?.print_file_scenario
+                      ? PRINT_SCENARIO_LABELS[order.quote.print_file_scenario] ?? order.quote.print_file_scenario
+                      : <span className="text-muted-foreground italic">—</span>}
+                  </td>
+
+                  {/* Entrega */}
+                  <td className="px-6 py-4 text-foreground">
+                    {order.quote?.installation_required != null
+                      ? (order.quote.installation_required ? "Con instalación" : "Retira por local")
+                      : <span className="text-muted-foreground italic">—</span>}
+                  </td>
+
+                  {/* Cotización */}
                   <td className="px-6 py-4 font-medium text-primary">
-                    {order.quote?.total_price != null ? `$${order.quote.total_price.toLocaleString()}` : <span className="text-muted-foreground italic font-normal">N/A</span>}
+                    {order.quote?.estimated_total != null
+                      ? `$${order.quote.estimated_total.toLocaleString("es-UY")} UYU`
+                      : <span className="text-muted-foreground italic font-normal">—</span>}
                   </td>
+
+                  {/* Estado */}
                   <td className="px-6 py-4">
                     {getStatusBadge(order.current_stage)}
                   </td>
+
+                  {/* Archivos */}
                   <td className="px-6 py-4">
                     {order.assets && order.assets.length > 0 ? (
                       <div className="flex flex-col gap-1">
                         {order.assets.map((asset, idx) => (
-                          <a 
-                            key={idx} 
-                            href={asset.file_url} 
-                            target="_blank" 
+                          <a
+                            key={idx}
+                            href={asset.file_url}
+                            target="_blank"
                             rel="noopener noreferrer"
                             className="text-blue-400 hover:text-blue-300 underline text-xs max-w-[100px] truncate block"
                             title={asset.file_name}
                           >
-                            {asset.asset_type === "SURFACE_PHOTO" ? "🖼️ Foto" : "📄 Diseño"}
+                            {asset.asset_type === "SURFACE_PHOTO" ? "🖼️ Foto superficie" : "📄 Diseño"}
                           </a>
                         ))}
                       </div>
@@ -196,22 +267,36 @@ export default function OrdersPage() {
                       <span className="text-muted-foreground italic text-xs">Sin archivos</span>
                     )}
                   </td>
-                  <td className="px-6 py-4 text-muted-foreground italic text-xs max-w-[150px] truncate" title={order.observation || ""}>
-                    {order.observation || "-"}
+
+                  {/* Observación */}
+                  <td
+                    className="px-6 py-4 text-muted-foreground italic text-xs max-w-[150px] truncate"
+                    title={order.observation || ""}
+                  >
+                    {order.observation || "—"}
                   </td>
+
+                  {/* Fecha */}
                   <td className="px-6 py-4 text-muted-foreground">
                     {new Date(order.created_at).toLocaleDateString("es-AR")}
                   </td>
+
+                  {/* Acciones */}
                   <td className="px-6 py-4">
                     {order.current_stage !== "CLOSED_WON" && order.current_stage !== "CLOSED_LOST" && (
                       <div className="flex gap-2">
-                        <button onClick={() => updateStage(order.id, "CLOSED_WON")} className="px-2 py-1 bg-green-900/30 text-green-400 hover:bg-green-900/50 border border-green-900 rounded text-xs transition-colors">Aceptar</button>
-                        <button 
+                        <button
+                          onClick={() => updateStage(order.id, "CLOSED_WON")}
+                          className="px-2 py-1 bg-green-900/30 text-green-400 hover:bg-green-900/50 border border-green-900 rounded text-xs transition-colors"
+                        >
+                          Aceptar
+                        </button>
+                        <button
                           onClick={() => {
                             if (window.confirm("¿Estás seguro de que deseas cancelar este pedido?")) {
                               updateStage(order.id, "CLOSED_LOST");
                             }
-                          }} 
+                          }}
                           className="px-2 py-1 bg-red-900/30 text-red-400 hover:bg-red-900/50 border border-red-900 rounded text-xs transition-colors"
                         >
                           Cancelar

@@ -187,16 +187,16 @@ export async function POST(request: Request) {
     await redis.rpush(bufferKey, JSON.stringify(incomingMsg));
     await redis.expire(bufferKey, 60); // 60s TTL
     
-    // 2. Registrar el timestamp de esta solicitud
-    const timestamp = Date.now();
-    await redis.set(debounceKey, timestamp, { ex: 60 });
+    // 2. Registrar un ID único para esta solicitud
+    const reqId = crypto.randomUUID();
+    await redis.set(debounceKey, reqId, { ex: 60 });
     
     // 3. Esperar 5 segundos para agrupar mensajes
     await new Promise(resolve => setTimeout(resolve, 5000));
     
     // 4. Comprobar si llegó un mensaje más nuevo durante la espera
-    const currentTimestamp = await redis.get<number>(debounceKey);
-    if (currentTimestamp && currentTimestamp !== timestamp) {
+    const currentReqId = await redis.get<string>(debounceKey);
+    if (currentReqId && currentReqId !== reqId) {
       console.log(`⏳ [QUEUE] Mensaje encolado para el chat ${chatId}. Delegando al último request.`);
       return NextResponse.json({ ok: true });
     }

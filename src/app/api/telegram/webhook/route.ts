@@ -191,8 +191,8 @@ export async function POST(request: Request) {
     const timestamp = Date.now();
     await redis.set(debounceKey, timestamp, { ex: 60 });
     
-    // 3. Esperar 3.5 segundos para agrupar mensajes
-    await new Promise(resolve => setTimeout(resolve, 3500));
+    // 3. Esperar 5 segundos para agrupar mensajes
+    await new Promise(resolve => setTimeout(resolve, 5000));
     
     // 4. Comprobar si llegó un mensaje más nuevo durante la espera
     const currentTimestamp = await redis.get<number>(debounceKey);

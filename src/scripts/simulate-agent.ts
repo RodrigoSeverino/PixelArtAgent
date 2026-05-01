@@ -183,7 +183,7 @@ const scenarios: TestScenario[] = [
     description:
       "Cliente que quiere plotear un vidrio, da medidas 1.2x0.8 y elige diseño personalizado.",
     userProxyPersonality:
-      "Querés plotear un vidrio de tu oficina. Las medidas son 1.2 metros de ancho por 0.8 de alto. La superficie está perfecta, lisa y limpia. Querés un diseño personalizado. Sos directo y cooperativo.",
+      "Querés plotear un vidrio de tu oficina. Las medidas son 1.2 metros de ancho por 0.8 de alto. La superficie está perfecta, lisa y limpia. Querés imprimir un archivo que ya tenés listo. Sos directo y cooperativo.",
     initialContext: freshContext(),
     validate: (conversation, rawOutputs) => {
       const hasGenerateQuote = rawOutputs.some((r) =>
@@ -302,6 +302,31 @@ const scenarios: TestScenario[] = [
       return {
         passed: true,
         reason: `Insistencia correcta: el bot pidió medidas ${measureRequests.length} veces sin aceptar respuestas vagas`,
+      };
+    },
+  },
+  {
+    name: "IMAGE BANK PATH",
+    description:
+      "Cliente que quiere ver opciones del catálogo/banco de imágenes de Pixel Art.",
+    userProxyPersonality:
+      "Empieza saludando y diciendo que querés plotear la heladera. No des las medidas hasta que te pregunten. Luego decís que mide 1.80 x 0.60. Finalmente, cuando te pregunten por el diseño, decís explícitamente: 'quiero ver el catálogo o galería de imágenes que tienen'. No cambies de decisión.",
+    initialContext: freshContext(),
+    validate: (conversation, rawOutputs) => {
+      const hasImageBank = rawOutputs.some((r) =>
+        /\[\[SET_PRINT:\s*IMAGE_BANK/i.test(r)
+      );
+
+      if (!hasImageBank) {
+        return {
+          passed: false,
+          reason: "El bot no emitió [[SET_PRINT:IMAGE_BANK]] a pesar de que el cliente pidió ver el catálogo.",
+        };
+      }
+
+      return {
+        passed: true,
+        reason: "Se detectó correctamente la intención de usar el banco de imágenes.",
       };
     },
   },

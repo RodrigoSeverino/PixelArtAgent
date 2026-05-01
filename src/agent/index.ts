@@ -37,17 +37,15 @@ function extractMeasurementsFromText(
     let h = parseFloat(classicMatch[2].replace(",", "."));
 
     const lowerText = text.toLowerCase();
-    if (
-      (lowerText.includes("cm") ||
+    const hasCm = lowerText.includes("cm") ||
         lowerText.includes("centimetro") ||
         lowerText.includes("centímetro") ||
         lowerText.includes("centimetros") ||
-        lowerText.includes("centímetros")) &&
-      w > 10
-    ) {
-      w = w / 100;
-      h = h / 100;
-    }
+        lowerText.includes("centímetros");
+
+    // Convert independently if value > 10, assuming it's in cm
+    if (w > 10) w = w / 100;
+    if (h > 10) h = h / 100;
 
     if (w > 0 && h > 0) return { w, h };
   }
@@ -141,12 +139,17 @@ function cleanAssistantText(text: string): string {
  * Actualiza la columna `current_stage` de un lead en Supabase.
  * Solo avanza hacia adelante en el embudo (no retrocede).
  */
-async function updateLeadStatus(leadId: string, newStage: LeadStage): Promise<void> {
+async function updateLeadStatus(leadId: string, newStage: LeadStage, observation?: string): Promise<void> {
   const now = new Date().toISOString();
+
+  const updateData: any = { current_stage: newStage, updated_at: now };
+  if (observation) {
+    updateData.observation = observation;
+  }
 
   const { error } = await supabase
     .from("b2c_leads")
-    .update({ current_stage: newStage, updated_at: now })
+    .update(updateData)
     .eq("id", leadId);
 
   if (error) {
@@ -218,10 +221,15 @@ export async function processAgentTurn(
   console.log(`📖 [REDIS] Historial recuperado: leadId=${leadId} | mensajes=${history.length}`);
 
   // 2. Construir el mensaje actual
+  let fallbackText = "Aquí tiene la fotografía de mi superficie.";
+  if (incomingMsg.hasFile && incomingMsg.fileName) {
+    fallbackText = `He enviado un archivo adjunto llamado: ${incomingMsg.fileName}`;
+  }
+
   const currentContent: any[] = [
     {
       type: "text",
-      text: incomingMsg.text || "Aquí tiene la fotografía de mi superficie.",
+      text: incomingMsg.text || fallbackText,
     },
   ];
 
@@ -247,7 +255,10 @@ export async function processAgentTurn(
   const blockMatch = text.match(/\[\[BLOCK:(\w+)\]\]/i);
   if (blockMatch) {
     console.log(`🚫 [BLOCK] Bloqueo detectado: ${blockMatch[1]}`);
-    await updateLeadStatus(leadId, "BLOCKED");
+    const blockReason = blockMatch[1] === "SURFACE_DAMAGE" 
+      ? "Superficie no apta (ladrillo/dañada)." 
+      : `Bloqueo automático: ${blockMatch[1]}`;
+    await updateLeadStatus(leadId, "BLOCKED", blockReason);
 
     // En modo bloqueado, limpiamos el texto y retornamos directamente
     const finalCleanup = cleanAssistantText(text);
@@ -259,7 +270,7 @@ export async function processAgentTurn(
     return {
       messages: messages.length > 0
         ? messages
-        : ["Lamentablemente la superficie no está en condiciones óptimas para el trabajo. Te recomendamos consultar con un técnico para evaluar alternativas."],
+        : ["Lamentablemente la superficie no está en condiciones óptimas para el trabajo, ya que con humedad o daño el vinilo no se adhiere bien. Un compañero de nuestro equipo técnico se pondrá en contacto contigo para ver cómo podemos ayudarte."],
       images: [],
       documents: [],
       newStage: "BLOCKED",
@@ -278,6 +289,9 @@ export async function processAgentTurn(
   if (mMatch) {
     localW = parseFloat(mMatch[1]);
     localH = parseFloat(mMatch[2]);
+    // Safety check: LLM sometimes forgets to convert cm to m
+    if (localW > 10) localW = localW / 100;
+    if (localH > 10) localH = localH / 100;
     localM2 = Number((localW * localH).toFixed(2));
   } else if (aiNaturalMeasures) {
     localW = localW || aiNaturalMeasures.w;
@@ -431,6 +445,10 @@ export async function processAgentTurn(
       .upsert(
         {
           lead_id: leadId,
+          surface_type: localSurfaceType || "WALL", // Fallback para evitar error de BD
+          width_meters: localW,
+          height_meters: localH,
+          square_meters: localM2,
           print_file_scenario: localScenario,
           updated_at: now,
         },
@@ -447,6 +465,20 @@ export async function processAgentTurn(
 
     // Status tracking: escenario seleccionado
     await updateLeadStatus(leadId, "PRINT_FILE_SCENARIO_SELECTED");
+    
+    // HUMAN HANDOFF para CUSTOM_DESIGN
+    if (localScenario === "CUSTOM_DESIGN") {
+      console.log(`👤 [HANDOFF] Diseño personalizado solicitado. Derivando a asesor.`);
+      await updateLeadStatus(leadId, "HUMAN_HANDOFF", "Solicitó un diseño personalizado.");
+      
+      return {
+        messages: ["Para un diseño personalizado, te derivamos con uno de nuestros asesores para que nos cuentes qué tenés en mente."],
+        images: [],
+        documents: [],
+        newStage: "HUMAN_HANDOFF",
+        requiresHumanReview: true,
+      };
+    }
   }
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -459,14 +491,32 @@ export async function processAgentTurn(
   // URL del PDF de presupuesto (se genera más adelante si aplica)
   let pdfUrl: string | null = null;
 
-  // Imágenes guía a enviar en este turno
-  const guideImages: string[] = [];
+  // Imágenes a enviar en este turno (guías o imágenes del banco)
+  const outgoingImages: string[] = [];
+
+  // Si se acaba de elegir IMAGE_BANK, buscamos imágenes para enviar
+  if (localScenario === "IMAGE_BANK" && context.printFileScenario !== "IMAGE_BANK") {
+    const { data: imagesData } = await supabase
+      .from("b2c_image_bank")
+      .select("image_url")
+      .eq("is_active", true)
+      .limit(8);
+
+    if (imagesData && imagesData.length > 0) {
+      const urls = imagesData.map(img => img.image_url);
+      outgoingImages.push(...urls);
+      console.log(`🖼️ [IMAGE_BANK] Se enviarán ${urls.length} imágenes del banco al cliente.`);
+      
+      // Inyectamos un mensaje fijo para evitar que el LLM divague o invente URLs
+      text = "¡Perfecto! Te paso algunas opciones de nuestro banco de imágenes para que vayas viendo. 🖼️";
+    }
+  }
 
   // Enviar surface_guide cuando el agente acaba de detectar la superficie por primera vez
   const surfaceJustDetected = !context.surfaceType && Boolean(localSurfaceType);
   if (surfaceJustDetected) {
     const surfaceGuideUrl = await getGuideImageUrl("surface");
-    if (surfaceGuideUrl) guideImages.push(surfaceGuideUrl);
+    if (surfaceGuideUrl) outgoingImages.push(surfaceGuideUrl);
   }
 
   // Enviar measure_guide cuando el agente pide medidas (hay superficie pero aún no hay medidas)
@@ -476,7 +526,7 @@ export async function processAgentTurn(
     /medid|ancho|alto|cuánto|cuanto|mide|tama[ñn]o/i.test(text);
   if (askingForMeasures) {
     const measureGuideUrl = await getGuideImageUrl("measure");
-    if (measureGuideUrl) guideImages.push(measureGuideUrl);
+    if (measureGuideUrl) outgoingImages.push(measureGuideUrl);
   }
 
   if (needsQuote) {
@@ -564,9 +614,25 @@ export async function processAgentTurn(
           : `${localM2} m²`;
 
       // IMPORTANTE: reemplazamos toda la respuesta del modelo por una salida limpia
-      text =
-        `¡Perfecto! Aquí tenés tu presupuesto oficial. Te lo envío también como PDF para que lo puedas guardar. 📋\n\n` +
-        `Si querés, podemos seguir por este mismo chat para dejar asentado el diseño elegido y los próximos pasos.`;
+      let textBreakdown = "";
+      if (quoteCalc.requiresHumanReview) {
+        textBreakdown = 
+          `¡Perfecto! Aquí tenés tu presupuesto oficial preliminar. Te lo envío también como PDF para que lo puedas guardar. 📋\n\n` +
+          `Dado el tamaño o las características del trabajo, este pedido requiere validación final por parte de nuestro equipo técnico, quienes confirmarán la viabilidad y el costo exacto de instalación.\n\n` +
+          `Si querés, podemos seguir por este mismo chat para dejar asentado el diseño elegido y los próximos pasos.`;
+      } else {
+        const retiroTotal = quoteCalc.estimatedBasePrice + quoteCalc.estimatedExtraPrice;
+        const instalacionAdicional = quoteCalc.estimatedInstallPrice;
+        
+        textBreakdown = 
+          `¡Perfecto! Aquí tenés tu presupuesto oficial. Te lo envío también como PDF para que lo puedas guardar. 📋\n\n` +
+          `Tenés dos opciones de entrega:\n` +
+          `1. **Retiro por nuestro local:** $${retiroTotal.toLocaleString("es-UY")} ${quoteCalc.currency}\n` +
+          `2. **Con instalación a domicilio:** $${total.toLocaleString("es-UY")} ${quoteCalc.currency} (+ $${instalacionAdicional.toLocaleString("es-UY")} de instalación)\n\n` +
+          `¿Qué opción preferís? Podés responderme por acá para confirmar tu elección y seguir avanzando con el diseño.`;
+      }
+
+      text = textBreakdown;
 
       // Generar y subir PDF del presupuesto
       try {
@@ -638,7 +704,13 @@ export async function processAgentTurn(
     await updateLeadStatus(leadId, "CLOSED_WON");
   }
 
-  const finalCleanup = cleanAssistantText(text);
+  let finalCleanup = cleanAssistantText(text);
+  
+  // Limpiar cualquier link markdown [texto](url) o http crudo que el modelo haya alucinado
+  finalCleanup = finalCleanup
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1") // Remueve Markdown link dejando solo el texto
+    .replace(/https?:\/\/[^\s]+/g, "");       // Remueve raw URLs
+
   const messages = finalCleanup
     .split(/\s*---\s*/)
     .map((m) => m.trim())
@@ -649,7 +721,7 @@ export async function processAgentTurn(
       messages.length > 0
         ? messages
         : ["He registrado los datos. ¿Cómo desea proceder?"],
-    images: guideImages,
+    images: outgoingImages,
     documents: pdfUrl ? [pdfUrl] : [],
     newStage: "STAY",
     requiresHumanReview: false,

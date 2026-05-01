@@ -211,7 +211,20 @@ export async function generateQuotePDF(
         { width: CONTENT_W }
       );
 
-    y += 20;
+    y += 14;
+
+    if (params.estimatedInstallPrice > 0) {
+      doc
+        .fillColor(MUTED)
+        .fontSize(8)
+        .text(
+          "* Si elegís retirar tu pedido por el local, el servicio de instalación se descontará del total.",
+          MARGIN,
+          y,
+          { width: CONTENT_W }
+        );
+      y += 14;
+    }
 
     doc
       .fillColor(MUTED)

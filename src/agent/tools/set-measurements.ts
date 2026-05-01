@@ -12,6 +12,7 @@
  */
 
 import { supabase } from "@/lib/supabase";
+import { validateMeasurements, categorizeSize } from "@/modules/measurements/validation";
 
 type SetMeasurementsInput = {
   widthMeters: number;
@@ -48,76 +49,20 @@ export const createSetMeasurementsTool = (leadId: string) => ({
     const now = new Date().toISOString();
 
     try {
-      // ---------------------------------
-      // 1) Normalización y validación
-      // ---------------------------------
-      const normalizedWidth = Number(widthMeters);
-      const normalizedHeight = Number(heightMeters);
-
-      if (!Number.isFinite(normalizedWidth) || !Number.isFinite(normalizedHeight)) {
-        console.error("[set_measurements] Medidas no numéricas", {
-          leadId,
-          widthMeters,
-          heightMeters,
-        });
-
+      // 1) Normalización y validación usando módulo compartido
+      const validation = validateMeasurements(widthMeters, heightMeters);
+      
+      if (!validation.isValid) {
+        console.error("[set_measurements] Validation failed", { leadId, widthMeters, heightMeters, reason: validation.message });
         return {
           success: false,
-          message:
-            "No pude registrar las medidas porque los valores recibidos no son válidos. " +
-            "Necesito ancho y alto expresados como números en metros.",
+          message: validation.message,
         };
       }
 
-      if (normalizedWidth <= 0 || normalizedHeight <= 0) {
-        console.error("[set_measurements] Medidas menores o iguales a cero", {
-          leadId,
-          normalizedWidth,
-          normalizedHeight,
-        });
+      const { normalizedWidth, normalizedHeight, squareMeters } = validation;
 
-        return {
-          success: false,
-          message:
-            "No pude registrar las medidas porque ancho y alto deben ser mayores a 0.",
-        };
-      }
-
-      // Límite defensivo para evitar valores absurdos por mala interpretación del agente
-      if (normalizedWidth > 100 || normalizedHeight > 100) {
-        console.error("[set_measurements] Medidas fuera de rango razonable", {
-          leadId,
-          normalizedWidth,
-          normalizedHeight,
-        });
-
-        return {
-          success: false,
-          message:
-            "Las medidas detectadas parecen fuera de rango. Confirmá ancho y alto en metros antes de continuar.",
-        };
-      }
-
-      const squareMeters = Number((normalizedWidth * normalizedHeight).toFixed(2));
-
-      if (!Number.isFinite(squareMeters) || squareMeters <= 0) {
-        console.error("[set_measurements] squareMeters inválido", {
-          leadId,
-          normalizedWidth,
-          normalizedHeight,
-          squareMeters,
-        });
-
-        return {
-          success: false,
-          message:
-            "No pude calcular los metros cuadrados con las medidas recibidas.",
-        };
-      }
-
-      // ---------------------------------
       // 2) Guardar medidas
-      // ---------------------------------
       const { error: insertError } = await supabase.from("b2c_measurements").insert({
         lead_id: leadId,
         width_meters: normalizedWidth,
@@ -147,9 +92,7 @@ export const createSetMeasurementsTool = (leadId: string) => ({
         };
       }
 
-      // ---------------------------------
       // 3) Avanzar etapa del lead
-      // ---------------------------------
       const { error: updateLeadError } = await supabase
         .from("b2c_leads")
         .update({
@@ -181,77 +124,17 @@ export const createSetMeasurementsTool = (leadId: string) => ({
         };
       }
 
-      // ---------------------------------
-      // 4) Verificar si es objeto completo
-      // ---------------------------------
-      const {
-        data: surfaceData,
-        error: surfaceError,
-      } = await supabase
-        .from("b2c_surface_assessments")
-        .select("is_full_object")
-        .eq("lead_id", leadId)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (surfaceError) {
-        console.error("[set_measurements] Error consultando surface assessment", {
-          leadId,
-          error: surfaceError,
-        });
-      }
-
-      if (surfaceData?.is_full_object) {
-        return {
-          success: true,
-          message:
-            `Medidas registradas: ${normalizedWidth}m × ${normalizedHeight}m = ${squareMeters} m². ` +
-            `OBJETO COMPLETO — derivar a asesor humano.`,
-          data: {
-            widthMeters: normalizedWidth,
-            heightMeters: normalizedHeight,
-            squareMeters,
-            requiresHumanReview: true,
-          },
-        };
-      }
-
-      // ---------------------------------
-      // 5) Evaluar reglas por tamaño
-      // ---------------------------------
-      let sizeAdvice = "";
-      let requiresHumanReview = false;
-
-      if (squareMeters < 1) {
-        sizeAdvice =
-          `Medidas registradas: ${normalizedWidth}m × ${normalizedHeight}m = ${squareMeters} m². ` +
-          `TAMAÑO PEQUEÑO — el cliente puede retirarlo sin costo de colocación adicional, ` +
-          `o pedir colocación con costo fijo. ` +
-          `Preguntá ahora por la imagen: ¿ya tiene archivo, quiere ver el banco de imágenes, o necesita diseño personalizado?`;
-      } else if (squareMeters < 3) {
-        sizeAdvice =
-          `Medidas registradas: ${normalizedWidth}m × ${normalizedHeight}m = ${squareMeters} m². ` +
-          `TAMAÑO MEDIO — nuestro equipo va a revisar la foto de la superficie. ` +
-          `Se recomienda colocación profesional. ` +
-          `Preguntá ahora por la imagen: ¿ya tiene archivo, quiere ver el banco de imágenes, o necesita diseño personalizado?`;
-      } else {
-        sizeAdvice =
-          `Medidas registradas: ${normalizedWidth}m × ${normalizedHeight}m = ${squareMeters} m². ` +
-          `TAMAÑO GRANDE (≥ 3 m²) — requiere evaluación presencial o por CRM. ` +
-          `El caso se marca para revisión humana. ` +
-          `Aún así, preguntá por la imagen para completar la cotización preliminar.`;
-        requiresHumanReview = true;
-      }
+      // 4) & 5) Verificar si es objeto completo y Evaluar reglas por tamaño usando módulo compartido
+      const categorization = await categorizeSize(leadId, squareMeters!, normalizedWidth!, normalizedHeight!);
 
       return {
         success: true,
-        message: sizeAdvice,
+        message: categorization.sizeAdvice,
         data: {
           widthMeters: normalizedWidth,
           heightMeters: normalizedHeight,
           squareMeters,
-          requiresHumanReview,
+          requiresHumanReview: categorization.requiresHumanReview,
         },
       };
     } catch (error) {

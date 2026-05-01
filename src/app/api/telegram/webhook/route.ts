@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { buildLeadRecord } from "@/lib/lead";
 import { processAgentTurn } from "@/agent/index";
-import { appendToHistory } from "@/lib/redis";
+import { appendToHistory, redis } from "@/lib/redis";
 import type { LeadContext, IncomingMessage } from "@/agent/types";
 import {
   sendMessage,
@@ -56,9 +56,13 @@ export async function POST(request: Request) {
       .filter(Boolean)
       .join(" ");
 
-    // --- Manejo de la foto ---
+    // --- Manejo de foto y documento ---
     const hasPhoto = Array.isArray(msg.photo) && msg.photo.length > 0;
     let photoUrl: string | null = null;
+    
+    const hasDocument = !!msg.document;
+    let fileUrl: string | null = null;
+    let fileName: string | null = null;
 
     // --- Buscar o crear lead ---
     const { data: existingLead } = await supabase
@@ -130,6 +134,38 @@ export async function POST(request: Request) {
       }
     }
 
+    // --- Descargar y guardar documento si mandó ---
+    if (hasDocument && msg.document) {
+      const doc = msg.document;
+      const telegramFileUrl = await getFileUrl(doc.file_id);
+
+      if (telegramFileUrl) {
+        const downloaded = await downloadFile(telegramFileUrl);
+        if (downloaded) {
+          const originalName = doc.file_name || `document_${Date.now()}`;
+          const safeName = originalName.replace(/[^a-zA-Z0-9.-]/g, "_");
+          const { url } = await uploadAsset(
+            leadId,
+            safeName,
+            downloaded.buffer,
+            downloaded.contentType
+          );
+          fileUrl = url;
+          fileName = originalName;
+
+          if (fileUrl) {
+            // Guardar como asset
+            await supabase.from("b2c_lead_assets").insert({
+              lead_id: leadId,
+              asset_type: "DESIGN_FILE",
+              file_url: fileUrl,
+              file_name: fileName,
+            });
+          }
+        }
+      }
+    }
+
     // --- Construir contexto inyectable para el Agente ---
     const context = await buildLeadContext(leadId, currentStage, fromName, phone, hasPhoto);
 
@@ -138,10 +174,60 @@ export async function POST(request: Request) {
       text,
       hasPhoto,
       photoUrl,
-      hasFile: false,
-      fileUrl: null,
-      fileName: null,
+      hasFile: hasDocument,
+      fileUrl,
+      fileName,
     };
+
+    // --- Message Queuing / Debouncing con Redis ---
+    const bufferKey = `webhook_buffer:${chatId}`;
+    const debounceKey = `webhook_debounce:${chatId}`;
+    
+    // 1. Guardar el mensaje en el buffer
+    await redis.rpush(bufferKey, JSON.stringify(incomingMsg));
+    await redis.expire(bufferKey, 60); // 60s TTL
+    
+    // 2. Registrar el timestamp de esta solicitud
+    const timestamp = Date.now();
+    await redis.set(debounceKey, timestamp, { ex: 60 });
+    
+    // 3. Esperar 3.5 segundos para agrupar mensajes
+    await new Promise(resolve => setTimeout(resolve, 3500));
+    
+    // 4. Comprobar si llegó un mensaje más nuevo durante la espera
+    const currentTimestamp = await redis.get<number>(debounceKey);
+    if (currentTimestamp && currentTimestamp !== timestamp) {
+      console.log(`⏳ [QUEUE] Mensaje encolado para el chat ${chatId}. Delegando al último request.`);
+      return NextResponse.json({ ok: true });
+    }
+    
+    // 5. Somos el request final del lote. Extraer todos los mensajes.
+    const rawMessages = await redis.lrange(bufferKey, 0, -1);
+    await redis.del(bufferKey);
+    
+    // 6. Combinar mensajes
+    let combinedText = "";
+    let finalPhotoUrl: string | null = null;
+    let finalHasPhoto = false;
+    
+    for (const raw of rawMessages) {
+      try {
+        const parsed: IncomingMessage = typeof raw === "string" ? JSON.parse(raw) : raw;
+        if (parsed.text) combinedText += (combinedText ? "\\n" : "") + parsed.text;
+        if (parsed.hasPhoto && parsed.photoUrl) {
+           finalHasPhoto = true;
+           finalPhotoUrl = parsed.photoUrl;
+        }
+      } catch (e) {
+        console.error("Error parsing buffered message:", e);
+      }
+    }
+    
+    incomingMsg.text = combinedText;
+    incomingMsg.hasPhoto = finalHasPhoto;
+    incomingMsg.photoUrl = finalPhotoUrl;
+    
+    console.log(`📦 [QUEUE] Procesando lote de ${rawMessages.length} mensajes. Texto combinado: "${incomingMsg.text}"`);
 
     // --- Invocar al Motor del Agente ---
     try {

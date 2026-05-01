@@ -17,6 +17,7 @@ export const LEAD_STAGES = [
   "QUOTE_GENERATED",
   "BLOCKED",
   "REQUIRES_HUMAN_REVIEW",
+  "HUMAN_HANDOFF",
   "CLOSED_WON",
   "CLOSED_LOST",
 ] as const;

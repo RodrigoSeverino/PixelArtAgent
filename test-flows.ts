@@ -65,6 +65,7 @@ async function runTest(testName: string, messages: string[], expectedEndStage?: 
       squareMeters: measures?.square_meters || null,
       printFileScenario: quote?.print_file_scenario || null,
       quoteSummary: quote ? `Total: $${quote.total_price_uyu}` : null,
+      installationRequired: null,
     };
 
     const incomingMsg = {

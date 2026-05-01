@@ -481,6 +481,15 @@ export async function processAgentTurn(
     }
   }
 
+  let localInstall: boolean | null = null;
+  const iMatch = text.match(/\[\[SET_INSTALL:\s*(true|false)\s*\]\]/i);
+  if (iMatch) {
+    localInstall = iMatch[1].toLowerCase() === "true";
+  }
+  if (localInstall === null && context.installationRequired !== null) {
+    localInstall = context.installationRequired;
+  }
+
   // ═══════════════════════════════════════════════════════════════════════
   // PARSER DE COTIZACIÓN
   // ═══════════════════════════════════════════════════════════════════════
@@ -539,23 +548,27 @@ export async function processAgentTurn(
     const hasMeasurements = Boolean(localM2);
     const hasSurface = Boolean(localSurfaceType);
     const hasScenario = Boolean(localScenario);
+    const hasInstall = localInstall !== null;
 
     console.log("[QUOTE-GATE]", {
       leadId,
       hasMeasurements,
       hasSurface,
       hasScenario,
+      hasInstall,
       localW,
       localH,
       localM2,
       localSurfaceType,
       localScenario,
+      localInstall,
       contextSurfaceType: context.surfaceType,
       contextPrintFileScenario: context.printFileScenario,
+      contextInstallationRequired: context.installationRequired,
       pMatch: Boolean(pMatch),
     });
 
-    const isFlowComplete = hasMeasurements && hasSurface && hasScenario;
+    const isFlowComplete = hasMeasurements && hasSurface && hasScenario && hasInstall;
 
     if (!hasMeasurements) {
       console.warn("⚠️ [FALLBACK] No hay medidas para cotizar.", {
@@ -573,10 +586,12 @@ export async function processAgentTurn(
           measurements: !hasMeasurements,
           surface: !hasSurface,
           scenario: !hasScenario,
+          install: !hasInstall,
         },
         localM2,
         localSurfaceType,
         localScenario,
+        localInstall,
       });
 
       if (!hasSurface) {
@@ -585,6 +600,9 @@ export async function processAgentTurn(
       } else if (!hasScenario) {
         text =
           "Antes de enviarte el presupuesto necesito confirmar el diseño: ¿ya tenés el archivo listo, o te podemos ofrecer opciones de nuestro banco de imágenes, o preferís un diseño personalizado?";
+      } else if (!hasInstall) {
+        text =
+          "Antes de enviarte el presupuesto necesito confirmar la entrega: ¿vas a necesitar que nosotros nos encarguemos de la instalación o preferís retirarlo por nuestro local?";
       } else {
         text =
           "Antes de cotizar necesito confirmar un dato más del pedido para avanzar.";
@@ -593,7 +611,7 @@ export async function processAgentTurn(
       const quoteCalc = await calculateQuote({
         surfaceType: localSurfaceType as SurfaceType,
         squareMeters: localM2!,
-        installationRequired: true,
+        installationRequired: localInstall as boolean,
         printFileScenario: localScenario as PrintFileScenario,
         isFullObject: isFullObject || localSurfaceType === "FRIDGE" || localSurfaceType === "VEHICLE",
       });
@@ -603,14 +621,17 @@ export async function processAgentTurn(
 
       const servicesStr =
         localScenario === "CUSTOM_DESIGN"
-          ? "Impresión, instalación y diseño personalizado"
+          ? "Impresión, diseño personalizado y " + (localInstall ? "instalación" : "retiro por local")
           : localScenario === "IMAGE_BANK"
-          ? "Impresión, instalación y búsqueda en banco de imágenes"
-          : "Impresión e instalación";
+          ? "Impresión, búsqueda en banco y " + (localInstall ? "instalación" : "retiro por local")
+          : "Impresión y " + (localInstall ? "instalación" : "retiro por local");
+
+      let wString = localW ? (localW < 1 ? `${localW * 100} cm` : `${localW} m`) : "";
+      let hString = localH ? (localH < 1 ? `${localH * 100} cm` : `${localH} m`) : "";
 
       const measureDetail =
         localW && localH
-          ? `${localW} m x ${localH} m (${localM2} m²)`
+          ? `Ancho: ${wString} x Alto: ${hString}`
           : `${localM2} m²`;
 
       // IMPORTANTE: reemplazamos toda la respuesta del modelo por una salida limpia
@@ -618,18 +639,13 @@ export async function processAgentTurn(
       if (quoteCalc.requiresHumanReview) {
         textBreakdown = 
           `¡Perfecto! Aquí tenés tu presupuesto oficial preliminar. Te lo envío también como PDF para que lo puedas guardar. 📋\n\n` +
-          `Dado el tamaño o las características del trabajo, este pedido requiere validación final por parte de nuestro equipo técnico, quienes confirmarán la viabilidad y el costo exacto de instalación.\n\n` +
+          `Dado el tamaño o las características del trabajo, este pedido requiere validación final por parte de nuestro equipo técnico, quienes confirmarán la viabilidad y el costo exacto${localInstall ? ' de instalación' : ''}.\n\n` +
           `Si querés, podemos seguir por este mismo chat para dejar asentado el diseño elegido y los próximos pasos.`;
       } else {
-        const retiroTotal = quoteCalc.estimatedBasePrice + quoteCalc.estimatedExtraPrice;
-        const instalacionAdicional = quoteCalc.estimatedInstallPrice;
-        
         textBreakdown = 
           `¡Perfecto! Aquí tenés tu presupuesto oficial. Te lo envío también como PDF para que lo puedas guardar. 📋\n\n` +
-          `Tenés dos opciones de entrega:\n` +
-          `1. **Retiro por nuestro local:** $${retiroTotal.toLocaleString("es-UY")} ${quoteCalc.currency}\n` +
-          `2. **Con instalación a domicilio:** $${total.toLocaleString("es-UY")} ${quoteCalc.currency} (+ $${instalacionAdicional.toLocaleString("es-UY")} de instalación)\n\n` +
-          `¿Qué opción preferís? Podés responderme por acá para confirmar tu elección y seguir avanzando con el diseño.`;
+          `El total de tu pedido ${localInstall ? 'con instalación incluida' : 'retirando por el local'} es de **$${total.toLocaleString("es-UY")} ${quoteCalc.currency}**.\n\n` +
+          `¿Te parece bien para avanzar con el pago y comenzar con el diseño?`;
       }
 
       text = textBreakdown;
@@ -675,7 +691,7 @@ export async function processAgentTurn(
             surface_type: localSurfaceType,
             square_meters: localM2,
             print_file_scenario: localScenario,
-            installation_required: true,
+            installation_required: localInstall ?? true,
             estimated_base_price: quoteCalc.estimatedBasePrice,
             estimated_install_price: quoteCalc.estimatedInstallPrice,
             estimated_extra_price: quoteCalc.estimatedExtraPrice,

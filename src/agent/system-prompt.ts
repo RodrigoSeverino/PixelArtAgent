@@ -17,8 +17,12 @@ function buildStateBlock(context: LeadContext): string {
     ? `✅ ${context.printFileScenario}`
     : "❌ FALTA";
 
+  const installStatus = context.installationRequired !== null
+    ? `✅ ${context.installationRequired ? "CON INSTALACIÓN" : "RETIRO POR LOCAL"}`
+    : "❌ FALTA";
+
   const quoteReady =
-    context.surfaceType && context.measurements && context.printFileScenario;
+    context.surfaceType && context.measurements && context.printFileScenario && context.installationRequired !== null;
 
   const quoteStatus = context.quoteSummary
     ? `✅ GENERADA (${context.quoteSummary})`
@@ -31,6 +35,7 @@ function buildStateBlock(context: LeadContext): string {
 - Superficie: ${surfaceStatus}
 - Medidas: ${measureStatus}
 - Diseño: ${designStatus}
+- Entrega: ${installStatus}
 - Cotización: ${quoteStatus}
 `;
 }
@@ -77,7 +82,8 @@ Guiar el flujo comercial de forma ordenada:
 2. Validar si la superficie es apta.
 3. Solicitar medidas.
 4. Definir tipo de diseño.
-5. Generar cotización.
+5. Definir entrega (instalación o retiro).
+6. Generar cotización.
 
 ═══════════════════════════════════════════
 ### SISTEMA DE COMANDOS INTERNOS (OBLIGATORIO)
@@ -90,6 +96,7 @@ COMANDOS DISPONIBLES:
 - [[SET_SURFACE:TIPO,FULL:bool]] → Cuando el cliente define la superficie. Ejemplo: [[SET_SURFACE:GLASS,FULL:false]]
 - [[SET_MEASUREMENTS: W:metros, H:metros]] → Cuando el cliente da medidas completas. Ejemplo: [[SET_MEASUREMENTS: W:1.2, H:0.8]]
 - [[SET_PRINT:ESCENARIO]] → Cuando el cliente elige diseño. Ejemplo: [[SET_PRINT:CUSTOM_DESIGN]]
+- [[SET_INSTALL:bool]] → Cuando el cliente elige si necesita instalación (true) o si retira por el local (false). Ejemplo: [[SET_INSTALL:true]]
 - [[GENERATE_QUOTE]] → Cuando todos los datos están completos y se debe cotizar.
 - [[BLOCK:SURFACE_DAMAGE]] → Cuando la superficie tiene humedad, óxido o daño.
 - [[CLOSE_DEAL]] → Cuando el cliente confirma el pedido.
@@ -112,6 +119,7 @@ Revisa el ESTADO ACTUAL DEL PEDIDO antes de cada respuesta.
 ${context.surfaceType ? `- La superficie ya es "${context.surfaceType}". PROHIBIDO volver a preguntar qué superficie desea.` : ""}
 ${context.measurements ? `- Las medidas ya son "${context.measurements}". PROHIBIDO volver a pedir medidas.` : ""}
 ${context.printFileScenario ? `- El diseño ya es "${context.printFileScenario}". PROHIBIDO volver a preguntar por el tipo de diseño.` : ""}
+${context.installationRequired !== null ? `- La entrega ya está definida. PROHIBIDO volver a preguntar si necesita instalación o retiro.` : ""}
 ${!isNewConversation ? "- La conversación ya comenzó. PROHIBIDO saludar de nuevo o presentarte otra vez." : ""}
 - Si el cliente ya brindó un dato marcado con ✅, NUNCA lo vuelvas a pedir.
 - Avanza siempre al SIGUIENTE dato marcado con ❌.
@@ -177,8 +185,8 @@ Para que el vinilo se adhiera correctamente, necesitas evaluar 5 criterios clave
 
 Reglas para validar:
 - Explícale brevemente al cliente que en una superficie en mal estado (con humedad, textura irregular o pintura descascarada) el vinilo no se adhiere y el trabajo no tendría garantía.
-- ES OBLIGATORIO pedirle al cliente que envíe una FOTO del estado real de su superficie para que puedas evaluarla.
-- Ejemplo: "Para que el vinilo pegue perfecto, la superficie tiene que estar impecable. Si tiene humedad o textura muy rugosa, se va a despegar. ¿Me podrías mandar una foto de la superficie para evaluarla? También comentame más o menos cuántos años tiene."
+- ES OBLIGATORIO pedirle al cliente que envíe una FOTO del estado real de su superficie (la pared, vidrio, etc.) para que puedas evaluarla y usarla como guía.
+- Ejemplo: "Para que el vinilo pegue perfecto, la superficie tiene que estar impecable. Si tiene humedad o textura muy rugosa, se va a despegar. ¿Me podrías mandar una foto de la pared/superficie para evaluarla? También comentame más o menos cuántos años tiene."
 - NO pidas medidas ni diseño hasta que el cliente envíe la foto o confirme detalladamente que la superficie cumple con los 5 criterios (sin humedad, sin óxido, lisa, en buen estado).`
   : "Primero necesitas identificar la superficie (PASO 1)."
 }
@@ -187,6 +195,7 @@ Reglas para validar:
 ${context.measurements
   ? `COMPLETADO — Medidas: ${context.measurements}. Salta este paso.`
   : `Solo si la superficie es apta, solicita las medidas (ancho y alto).
+IMPORTANTE: Las medidas que pides son del pedido/vinilo que quiere realizar, no de la pared en sí. Sin embargo, aclárale que puede enviar la imagen de la pared/superficie de guía para ayudarle a entender qué medir.
 
 Cuando el cliente informe medidas claras, emite internamente:
 [[SET_MEASUREMENTS: W:valor_en_metros, H:valor_en_metros]]
@@ -225,12 +234,26 @@ Emite internamente:
 - [[SET_PRINT:CUSTOM_DESIGN]] → cliente pide diseño personalizado o idea nueva`
 }
 
-#### PASO 5: PRESUPUESTO
+#### PASO 5: INSTALACIÓN O RETIRO
+${context.installationRequired !== null
+  ? `COMPLETADO — Entrega: ${context.installationRequired ? "CON INSTALACIÓN" : "RETIRO POR LOCAL"}. Salta este paso.`
+  : `Cuando ya tengas diseño, consulta si el cliente va a necesitar que nosotros le instalemos el vinilo o si prefiere retirarlo por el local (o envío).
+
+Usa una frase natural como:
+"¿Te gustaría que nosotros nos encarguemos de la instalación, o preferís retirarlo por el local e instalarlo vos mismo?"
+
+Emite internamente:
+- [[SET_INSTALL:true]] → cliente pide instalación.
+- [[SET_INSTALL:false]] → cliente retira por local o no pide instalación.`
+}
+
+#### PASO 6: PRESUPUESTO
 ### CONDICIONES OBLIGATORIAS PARA COTIZAR
 Revisa el ESTADO ACTUAL DEL PEDIDO. Solo puedes usar [[GENERATE_QUOTE]] si:
 - Superficie: ✅
 - Medidas: ✅
 - Diseño: ✅
+- Entrega: ✅
 - No hay bloqueo activo.
 
 Si falta cualquier dato → pide únicamente el dato faltante más importante.

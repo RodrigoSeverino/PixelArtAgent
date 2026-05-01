@@ -50,6 +50,9 @@ export interface LeadContext {
   /** Escenario de imagen elegido */
   printFileScenario: string | null;
 
+  /** Si necesita instalación o retira por el local */
+  installationRequired: boolean | null;
+
   /** Resumen de cotización si ya existe */
   quoteSummary: string | null;
 }

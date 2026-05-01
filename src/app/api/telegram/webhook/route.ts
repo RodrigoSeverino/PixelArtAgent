@@ -301,6 +301,7 @@ async function buildLeadContext(
     squareMeters: null,
     printFileScenario: null,
     quoteSummary: null,
+    installationRequired: null,
   };
 
   try {
@@ -348,6 +349,9 @@ async function buildLeadContext(
     if (quote) {
       context.printFileScenario = quote.print_file_scenario;
       context.quoteSummary = `Total estimado $${quote.estimated_total}`;
+      if (quote.installation_required !== undefined && quote.installation_required !== null) {
+        context.installationRequired = quote.installation_required;
+      }
     }
   } catch (err) {
     console.error("⚠️ [WARNING] Error al construir el contexto:", err);

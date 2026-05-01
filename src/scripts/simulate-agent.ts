@@ -58,6 +58,7 @@ function freshContext(overrides?: Partial<LeadContext>): LeadContext {
     squareMeters: null,
     printFileScenario: null,
     quoteSummary: null,
+    installationRequired: null,
     ...overrides,
   };
 }

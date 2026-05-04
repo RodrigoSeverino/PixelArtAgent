@@ -237,25 +237,29 @@ export async function processAgentTurn(
     },
   ];
 
-  if (incomingMsg.hasPhoto && incomingMsg.photoUrl) {
-    try {
-      console.log(`[AGENT] Descargando imagen manualmente para evitar Timeout AI SDK: ${incomingMsg.photoUrl}`);
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
-      
-      const res = await fetch(incomingMsg.photoUrl, { signal: controller.signal });
-      clearTimeout(timeoutId);
-      
-      if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);
-      const arrayBuffer = await res.arrayBuffer();
-      // Usar Uint8Array que es compatible con Edge y Node
-      const imageBytes = new Uint8Array(arrayBuffer);
-      currentContent.push({ type: "image", image: imageBytes });
-      console.log(`[AGENT] Imagen descargada exitosamente (${imageBytes.length} bytes)`);
-    } catch (err) {
-      console.error(`❌ [AGENT] Fallo al descargar imagen, enviando URL directa al SDK:`, err);
-      currentContent.push({ type: "image", image: incomingMsg.photoUrl });
-    }
+  // TODO: Re-habilitar análisis de imagen cuando el prompt de superficie sea estable.
+  // Por ahora se omite el envío de la foto al LLM para evitar falsos positivos en [[BLOCK:SURFACE_DAMAGE]].
+  // if (incomingMsg.hasPhoto && incomingMsg.photoUrl) {
+  //   try {
+  //     console.log(`[AGENT] Descargando imagen manualmente para evitar Timeout AI SDK: ${incomingMsg.photoUrl}`);
+  //     const controller = new AbortController();
+  //     const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
+  //
+  //     const res = await fetch(incomingMsg.photoUrl, { signal: controller.signal });
+  //     clearTimeout(timeoutId);
+  //
+  //     if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);
+  //     const arrayBuffer = await res.arrayBuffer();
+  //     const imageBytes = new Uint8Array(arrayBuffer);
+  //     currentContent.push({ type: "image", image: imageBytes });
+  //     console.log(`[AGENT] Imagen descargada exitosamente (${imageBytes.length} bytes)`);
+  //   } catch (err) {
+  //     console.error(`❌ [AGENT] Fallo al descargar imagen, enviando URL directa al SDK:`, err);
+  //     currentContent.push({ type: "image", image: incomingMsg.photoUrl });
+  //   }
+  // }
+  if (incomingMsg.hasPhoto) {
+    console.log(`[AGENT] Foto recibida pero análisis visual deshabilitado temporalmente (TODO: re-habilitar).`);
   }
 
   const historyWithNew = [...history, { role: "user", content: currentContent }];

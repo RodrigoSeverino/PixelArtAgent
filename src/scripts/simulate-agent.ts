@@ -19,7 +19,7 @@ import type { LeadContext } from "../agent/types";
 // CONFIGURACIÓN
 // ═══════════════════════════════════════════════════════════════════════════
 
-const MAX_TURNS = 8; // Máximo de intercambios por escenario
+const MAX_TURNS = 10; // Máximo de intercambios por escenario
 const AGENT_MODEL = "gpt-4o-mini";
 const USER_PROXY_MODEL = "gpt-4o-mini";
 

@@ -491,6 +491,8 @@ export async function processAgentTurn(
         {
           lead_id: leadId,
           surface_type: localSurfaceType || "WALL",
+          width_meters: localW,
+          height_meters: localH,
           square_meters: localM2,
           print_file_scenario: localScenario,
           updated_at: now,

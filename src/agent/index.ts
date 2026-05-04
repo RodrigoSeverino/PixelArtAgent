@@ -645,21 +645,33 @@ export async function processAgentTurn(
     Boolean(localScenario) &&
     localInstall !== null;
 
+  // ── Guardia: si la cotización ya fue generada/cerrada, no volver a generarla
+  // a menos que el LLM emita [[GENERATE_QUOTE]] explícitamente (caso: cliente pide recotizar).
+  const quoteAlreadyDone =
+    context.currentStage === "QUOTE_GENERATED" ||
+    context.currentStage === "CLOSED_WON" ||
+    Boolean(context.quoteSummary); // hay una cotización guardada en DB
+
   // needsQuote dispara cuando:
-  // 1. El LLM emitió [[GENERATE_QUOTE]] explícitamente
-  // 2. El flujo está completo (auto-trigger)
-  // 3. El LLM alucina texto de cotización (ej: "$X", "monto generado") → lo interceptamos
-  //    para reemplazarlo con la cotización real o pedir el dato faltante correcto.
+  // 1. El LLM emitió [[GENERATE_QUOTE]] explícitamente (siempre aplica)
+  // 2. El flujo está completo (auto-trigger) — SOLO si no hay cotización previa
+  // 3. El LLM alucina texto de cotización — SOLO si no hay cotización previa
   const needsQuote =
     text.includes("[[GENERATE_QUOTE]]") ||
-    flowCompleteAutoTrigger ||
-    /presupuesto|costo|precio|monto|cotizaci[oó]n|\$[xX]\b|xxxx|monto generado/i.test(text);
+    (!quoteAlreadyDone && (
+      flowCompleteAutoTrigger ||
+      /presupuesto|costo|precio|monto|cotizaci[oó]n|\$[xX]\b|xxxx|monto generado/i.test(text)
+    ));
 
-  if (flowCompleteAutoTrigger && !text.includes("[[GENERATE_QUOTE]]")) {
+  if (flowCompleteAutoTrigger && !text.includes("[[GENERATE_QUOTE]]") && !quoteAlreadyDone) {
     console.log(`⚡ [AUTO-QUOTE] Todos los datos completos. Forzando generación de cotización.`, {
       localM2, localSurfaceType, localScenario, localInstall,
     });
   }
+  if (quoteAlreadyDone && !text.includes("[[GENERATE_QUOTE]]")) {
+    console.log(`🔒 [QUOTE-GUARD] Cotización ya existe (stage: ${context.currentStage}). Omitiendo re-generación.`);
+  }
+
 
   // URL del PDF de presupuesto (se genera más adelante si aplica)
   let pdfUrl: string | null = null;

@@ -15,6 +15,45 @@ import { uploadAsset, downloadFile } from "@/lib/storage";
 import type { LeadStage } from "@/types/lead";
 
 /**
+ * Detecta si el cliente hace referencia EXPLÍCITA al pedido anterior.
+ * Si es así, NO creamos un nuevo lead — el cliente quiere info sobre su pedido.
+ */
+function isPreviousOrderReference(text: string): boolean {
+  const t = text.toLowerCase();
+  return [
+    "mi pedido", "mi encargo", "el pedido", "el encargo",
+    "cuándo llega", "cuando llega", "cuándo está", "cuando está",
+    "estado del pedido", "seguimiento", "track",
+    "lo que pedí", "lo que encargué", "lo que compré",
+    "el vinilo que", "el ploteo que", "el presupuesto que",
+    "factura", "comprobante", "pago", "pagué", "pague",
+  ].some((p) => t.includes(p));
+}
+
+/**
+ * Detecta si un cliente (con pedido anterior CERRADO) quiere iniciar un nuevo pedido.
+ * Cualquier saludo genérico o frase de nuevo pedido activa esto,
+ * EXCEPTO si hace referencia al pedido anterior.
+ */
+function isNewOrderIntent(text: string): boolean {
+  if (isPreviousOrderReference(text)) return false;
+  const t = text.toLowerCase();
+  // Saludos genéricos → intención implícita de nuevo pedido
+  const greetings = [
+    "hola", "buen día", "buenos días", "buenas tardes", "buenas noches",
+    "buenas", "hey", "buen dia",
+  ];
+  // Frases explícitas de nuevo pedido
+  const newOrderPhrases = [
+    "otro pedido", "nuevo pedido", "otra cotización", "otra cotizacion",
+    "quiero cotizar", "quiero otro", "necesito otro", "hacer otro",
+    "quiero pedir", "quiero encargar", "necesito un vinilo", "me interesa",
+    "quisiera", "necesito", "quiero",
+  ];
+  return [...greetings, ...newOrderPhrases].some((p) => t.includes(p));
+}
+
+/**
  * POST /api/telegram/webhook
  * Recibe mensajes de Telegram, delega el procesamiento al agente
  * basado en Vercel AI SDK, y devuelve la respuesta.
@@ -77,7 +116,33 @@ export async function POST(request: Request) {
     let currentStage: LeadStage;
     let phone: string | null = null;
 
-    if (existingLead) {
+    if (existingLead && existingLead.current_stage === "CLOSED_WON") {
+      // ── Cliente recurrente con pedido cerrado ──────────────────────────────
+      // Si no hace referencia al pedido anterior → nuevo lead (pedido nuevo)
+      // Si pregunta por su pedido anterior → modo post-venta, mismo lead
+      if (isNewOrderIntent(text)) {
+        console.log(`🆕 [NEW ORDER] Lead ${existingLead.id} en CLOSED_WON. Creando nuevo lead para chat ${chatId}.`);
+        const newLead = buildLeadRecord({
+          fullName: fromName || null,
+          channel: "TELEGRAM",
+          telegramChatId: String(chatId),
+        });
+        const { error: newLeadError } = await supabase.from("b2c_leads").insert(newLead);
+        if (newLeadError) {
+          console.error("Error creating new lead for returning customer:", newLeadError);
+          await sendMessage(chatId, "Ocurrió un error. Intentá de nuevo en unos minutos. 😕");
+          return NextResponse.json({ ok: true });
+        }
+        leadId = newLead.id;
+        currentStage = "INITIAL_CONTACT";
+      } else {
+        // Pregunta sobre pedido anterior → usar lead existente en modo post-venta
+        console.log(`📦 [POST-SALE] Lead ${existingLead.id} en CLOSED_WON. Modo post-venta.`);
+        leadId = existingLead.id;
+        currentStage = existingLead.current_stage as LeadStage;
+        phone = existingLead.phone;
+      }
+    } else if (existingLead) {
       leadId = existingLead.id;
       currentStage = existingLead.current_stage as LeadStage;
       phone = existingLead.phone;

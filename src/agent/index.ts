@@ -124,6 +124,42 @@ function extractScenarioFromText(text: string): string | null {
   return null;
 }
 
+/**
+ * Detecta si el cliente quiere instalación (true) o retiro en local (false)
+ * a partir de texto en lenguaje natural — tanto del usuario como del LLM.
+ * Retorna null si no se puede determinar.
+ */
+function extractInstallFromText(text: string): boolean | null {
+  if (!text) return null;
+  const t = text.toLowerCase();
+
+  // ── Retiro en local (instalación = false) ──
+  const pickupPatterns = [
+    "retiro", "retira", "lo busco", "paso a buscar", "paso a retir",
+    "voy a buscar", "busco yo", "buscar yo", "lo voy a buscar",
+    "retirarlo", "retiro en local", "retiro por local", "retiro en el local",
+    "lo retiro", "lo busco", "lo paso a buscar", "me lo llevo",
+    "sin instalación", "sin instalacion", "sin colocación", "sin colocacion",
+    "no necesito instalación", "no necesito instalacion",
+    "no necesito que instalen", "no quiero instalación",
+  ];
+
+  // ── Con instalación (instalación = true) ──
+  const installPatterns = [
+    "instalación", "instalacion", "instalen", "instalar",
+    "que vengan", "vengan a colocar", "colocación", "colocacion",
+    "que lo pongan", "que lo instalen", "necesito instalación",
+    "con instalación", "con colocación", "quiero instalación",
+    "lo coloquen", "que lo coloquen",
+  ];
+
+  // Evaluar primero patrones de retiro (son más específicos)
+  if (pickupPatterns.some((p) => t.includes(p))) return false;
+  if (installPatterns.some((p) => t.includes(p))) return true;
+
+  return null;
+}
+
 function cleanAssistantText(text: string): string {
   return text
     .replace(/\[\[GENERATE_QUOTE\]\]/g, "")
@@ -545,6 +581,45 @@ export async function processAgentTurn(
     }
     await updateLeadStatus(leadId, "INSTALLATION_SELECTED");
   }
+
+  // Auto-sense de instalación desde el texto del USUARIO (si no vino el tag)
+  if (localInstall === null) {
+    const installFromUser = extractInstallFromText(incomingMsg.text);
+    if (installFromUser !== null) {
+      localInstall = installFromUser;
+      console.log(`🔍 [AUTO-SENSE INSTALL user] "${incomingMsg.text}" → ${localInstall}`);
+    }
+  }
+
+  // Auto-sense de instalación desde el texto de RESPUESTA del LLM (confirma en lenguaje natural)
+  if (localInstall === null) {
+    const installFromAI = extractInstallFromText(text);
+    if (installFromAI !== null) {
+      localInstall = installFromAI;
+      console.log(`🔍 [AUTO-SENSE INSTALL AI] → ${localInstall}`);
+    }
+  }
+
+  // Si detectamos instalación en este turno pero no estaba en DB, la guardamos
+  if (localInstall !== null && context.installationRequired === null) {
+    const { error: installAutoSaveError } = await supabase
+      .from("b2c_quotes")
+      .upsert(
+        {
+          lead_id: leadId,
+          surface_type: localSurfaceType || context.surfaceType || "WALL",
+          installation_required: localInstall,
+          updated_at: now,
+        },
+        { onConflict: "lead_id" }
+      );
+    if (installAutoSaveError) {
+      console.error("❌ [INSTALL AUTO-SAVE]", installAutoSaveError);
+    } else {
+      console.log(`💾 [INSTALL AUTO-SAVED] ${localInstall} para lead ${leadId}`);
+    }
+  }
+
   // ─── MERGE: siempre combinar valores del turno actual con el contexto persistido ───
   // Esto evita que un dato respondido en un turno anterior sea ignorado en el siguiente.
   if (localInstall === null && context.installationRequired !== null) {

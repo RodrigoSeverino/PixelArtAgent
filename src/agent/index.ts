@@ -131,7 +131,12 @@ function cleanAssistantText(text: string): string {
     .replace(/\[\[BLOCK:.*?\]\]/g, "")
     .replace(/^\s*\(.*?cotizaci[oó]n.*?\)\s*$/gim, "")
     .replace(/^\s*\(.*?b[uú]squeda.*?im[aá]genes.*?\)\s*$/gim, "")
-    .replace(/XXXX|\[.*?\]|incluya el monto.*?aquí|precio real calculado/gi, "")
+    .replace(/XXXX|incluya el monto.*?aquí|precio real calculado/gi, "")
+    // Limpiar placeholders que el LLM alucina cuando intenta generar una cotización
+    .replace(/\$[xX]\b/g, "")
+    .replace(/\(monto generado en el sistema\)/gi, "")
+    .replace(/\[monto generado en el sistema\]/gi, "")
+    .replace(/monto generado en el sistema/gi, "")
     .trim();
 }
 
@@ -565,12 +570,15 @@ export async function processAgentTurn(
     Boolean(localScenario) &&
     localInstall !== null;
 
-  // needsQuote solo se activa por texto libre (precios/cotización) si el flujo está completo.
-  // Esto evita que el fallback-text del quote-gate pise la respuesta cuando aún faltan datos.
+  // needsQuote dispara cuando:
+  // 1. El LLM emitió [[GENERATE_QUOTE]] explícitamente
+  // 2. El flujo está completo (auto-trigger)
+  // 3. El LLM alucina texto de cotización (ej: "$X", "monto generado") → lo interceptamos
+  //    para reemplazarlo con la cotización real o pedir el dato faltante correcto.
   const needsQuote =
     text.includes("[[GENERATE_QUOTE]]") ||
     flowCompleteAutoTrigger ||
-    (/presupuesto|costo|precio|monto|cotizaci[oó]n|xxxx/i.test(text) && flowCompleteAutoTrigger);
+    /presupuesto|costo|precio|monto|cotizaci[oó]n|\$[xX]\b|xxxx|monto generado/i.test(text);
 
   if (flowCompleteAutoTrigger && !text.includes("[[GENERATE_QUOTE]]")) {
     console.log(`⚡ [AUTO-QUOTE] Todos los datos completos. Forzando generación de cotización.`, {

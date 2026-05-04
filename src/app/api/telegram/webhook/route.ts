@@ -257,8 +257,14 @@ export async function POST(request: Request) {
       }
 
       for (const docUrl of agentResponse.documents) {
-        console.log(`📄 [OUT] URL Documento: ${docUrl}`);
-        await sendDocument(chatId, docUrl);
+        console.log(`📄 [OUT] Intentando enviar PDF a chat ${chatId}: ${docUrl}`);
+        const docSent = await sendDocument(chatId, docUrl);
+        if (!docSent) {
+          // Fallback: si Telegram no puede descargar el PDF (URL privada/problemas),
+          // enviamos el link directo para que el cliente lo abra manualmente.
+          console.warn(`⚠️ [PDF FALLBACK] sendDocument falló, enviando URL como texto.`);
+          await sendMessage(chatId, `📄 Podés ver y descargar tu presupuesto aquí:\n${docUrl}`);
+        }
       }
 
     } catch (agentError) {

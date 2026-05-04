@@ -452,15 +452,31 @@ export async function processAgentTurn(
   }
 
   const pMatch = text.match(/\[\[SET_PRINT:\s*(\w+)\s*\]\]/i);
+  // Captura cuando el LLM confirma el diseño en texto (con o sin comando):
+  // Ej: "Diseño: Personalizado", "diseño personalizado", "Diseño:Personalizado"
   const mentionsCustomDesign =
-    /diseño personalizado|diseno personalizado|equipo de arte|diseño exclusivo|diseno exclusivo/i.test(
+    /diseño\s*:?\s*personalizado|diseno\s*:?\s*personalizado|equipo de arte|diseño exclusivo|diseno exclusivo/i.test(
       text
     );
+  const mentionsReadyFile =
+    /diseño\s*:?\s*archivo|diseño\s*:?\s*listo|archivo\s*:?\s*listo|diseño\s*:?\s*ready/i.test(text);
+  const mentionsImageBank =
+    /diseño\s*:?\s*banco|diseño\s*:?\s*galería|diseño\s*:?\s*imagen/i.test(text);
 
   if (pMatch) {
     localScenario = pMatch[1];
-  } else if (mentionsCustomDesign) {
-    localScenario = "CUSTOM_DESIGN";
+  } else if (!localScenario) {
+    // Auto-detect from LLM response text when no explicit command was emitted
+    const aiScenario = extractScenarioFromText(text);
+    if (aiScenario) {
+      localScenario = aiScenario;
+    } else if (mentionsCustomDesign) {
+      localScenario = "CUSTOM_DESIGN";
+    } else if (mentionsReadyFile) {
+      localScenario = "READY_FILE";
+    } else if (mentionsImageBank) {
+      localScenario = "IMAGE_BANK";
+    }
   }
 
   // Normalización defensiva de escenarios viejos/cortos

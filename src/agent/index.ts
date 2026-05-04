@@ -531,9 +531,25 @@ export async function processAgentTurn(
   // ═══════════════════════════════════════════════════════════════════════
   // PARSER DE COTIZACIÓN
   // ═══════════════════════════════════════════════════════════════════════
+
+  // Safety net: si el modelo tiene todos los datos pero olvidó emitir [[GENERATE_QUOTE]], lo forzamos.
+  // Esto previene que la conversación se frene esperando un mensaje del usuario.
+  const flowCompleteAutoTrigger =
+    Boolean(localM2) &&
+    Boolean(localSurfaceType) &&
+    Boolean(localScenario) &&
+    localInstall !== null;
+
   const needsQuote =
     text.includes("[[GENERATE_QUOTE]]") ||
-    /presupuesto|costo|precio|monto|cotizaci[oó]n|xxxx/i.test(text);
+    /presupuesto|costo|precio|monto|cotizaci[oó]n|xxxx/i.test(text) ||
+    flowCompleteAutoTrigger;
+
+  if (flowCompleteAutoTrigger && !text.includes("[[GENERATE_QUOTE]]")) {
+    console.log(`⚡ [AUTO-QUOTE] Todos los datos completos. Forzando generación de cotización.`, {
+      localM2, localSurfaceType, localScenario, localInstall,
+    });
+  }
 
   // URL del PDF de presupuesto (se genera más adelante si aplica)
   let pdfUrl: string | null = null;

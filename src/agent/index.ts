@@ -490,9 +490,7 @@ export async function processAgentTurn(
       .upsert(
         {
           lead_id: leadId,
-          surface_type: localSurfaceType || "WALL", // Fallback para evitar error de BD
-          width_meters: localW,
-          height_meters: localH,
+          surface_type: localSurfaceType || "WALL",
           square_meters: localM2,
           print_file_scenario: localScenario,
           updated_at: now,

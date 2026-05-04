@@ -524,8 +524,16 @@ export async function processAgentTurn(
     }
     await updateLeadStatus(leadId, "INSTALLATION_SELECTED");
   }
+  // ─── MERGE: siempre combinar valores del turno actual con el contexto persistido ───
+  // Esto evita que un dato respondido en un turno anterior sea ignorado en el siguiente.
   if (localInstall === null && context.installationRequired !== null) {
     localInstall = context.installationRequired;
+  }
+  if (!localScenario && context.printFileScenario) {
+    localScenario = context.printFileScenario;
+  }
+  if (!localSurfaceType && context.surfaceType) {
+    localSurfaceType = context.surfaceType;
   }
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -533,17 +541,20 @@ export async function processAgentTurn(
   // ═══════════════════════════════════════════════════════════════════════
 
   // Safety net: si el modelo tiene todos los datos pero olvidó emitir [[GENERATE_QUOTE]], lo forzamos.
-  // Esto previene que la conversación se frene esperando un mensaje del usuario.
+  // IMPORTANTE: usamos los valores YA MERGEADOS con el contexto (no solo los del turno actual).
+  // Esto evita el loop donde el agente pregunta datos que ya fueron respondidos en turnos anteriores.
   const flowCompleteAutoTrigger =
     Boolean(localM2) &&
     Boolean(localSurfaceType) &&
     Boolean(localScenario) &&
     localInstall !== null;
 
+  // needsQuote solo se activa por texto libre (precios/cotización) si el flujo está completo.
+  // Esto evita que el fallback-text del quote-gate pise la respuesta cuando aún faltan datos.
   const needsQuote =
     text.includes("[[GENERATE_QUOTE]]") ||
-    /presupuesto|costo|precio|monto|cotizaci[oó]n|xxxx/i.test(text) ||
-    flowCompleteAutoTrigger;
+    flowCompleteAutoTrigger ||
+    (/presupuesto|costo|precio|monto|cotizaci[oó]n|xxxx/i.test(text) && flowCompleteAutoTrigger);
 
   if (flowCompleteAutoTrigger && !text.includes("[[GENERATE_QUOTE]]")) {
     console.log(`⚡ [AUTO-QUOTE] Todos los datos completos. Forzando generación de cotización.`, {

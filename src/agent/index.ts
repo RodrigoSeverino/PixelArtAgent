@@ -263,7 +263,12 @@ export async function processAgentTurn(
 
   // 1. Recuperar historial de sesión activa desde Redis
   const history = await getConversationHistory(leadId);
-  console.log(`📖 [REDIS] Historial recuperado: leadId=${leadId} | mensajes=${history.length}`);
+  console.log(`📖 [AGENT SESSION]
+    LeadID: ${leadId}
+    Stage: ${context.currentStage}
+    History: ${history.length} msgs
+    Has Quote: ${!!context.quoteSummary}
+  `);
 
   // 2. Construir el mensaje actual
   let fallbackText = "Aquí tiene la fotografía de mi superficie.";
@@ -278,30 +283,26 @@ export async function processAgentTurn(
     },
   ];
 
-  // TODO: Re-habilitar análisis de imagen cuando el prompt de superficie sea estable.
-  // Por ahora se omite el envío de la foto al LLM para evitar falsos positivos en [[BLOCK:SURFACE_DAMAGE]].
-  // if (incomingMsg.hasPhoto && incomingMsg.photoUrl) {
-  //   try {
-  //     console.log(`[AGENT] Descargando imagen manualmente para evitar Timeout AI SDK: ${incomingMsg.photoUrl}`);
-  //     const controller = new AbortController();
-  //     const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
-  //
-  //     const res = await fetch(incomingMsg.photoUrl, { signal: controller.signal });
-  //     clearTimeout(timeoutId);
-  //
-  //     if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);
-  //     const arrayBuffer = await res.arrayBuffer();
-  //     const imageBytes = new Uint8Array(arrayBuffer);
-  //     currentContent.push({ type: "image", image: imageBytes });
-  //     console.log(`[AGENT] Imagen descargada exitosamente (${imageBytes.length} bytes)`);
-  //   } catch (err) {
-  //     console.error(`❌ [AGENT] Fallo al descargar imagen, enviando URL directa al SDK:`, err);
-  //     currentContent.push({ type: "image", image: incomingMsg.photoUrl });
-  //   }
-  // }
-  if (incomingMsg.hasPhoto) {
-    console.log(`[AGENT] Foto recibida pero análisis visual deshabilitado temporalmente (TODO: re-habilitar).`);
+  if (incomingMsg.hasPhoto && incomingMsg.photoUrl) {
+    try {
+      console.log(`[AGENT] Descargando imagen manualmente para evitar Timeout AI SDK: ${incomingMsg.photoUrl}`);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
+
+      const res = await fetch(incomingMsg.photoUrl, { signal: controller.signal });
+      clearTimeout(timeoutId);
+
+      if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);
+      const arrayBuffer = await res.arrayBuffer();
+      const imageBytes = new Uint8Array(arrayBuffer);
+      currentContent.push({ type: "image", image: imageBytes });
+      console.log(`[AGENT] Imagen descargada exitosamente (${imageBytes.length} bytes)`);
+    } catch (err) {
+      console.error(`❌ [AGENT] Fallo al descargar imagen, enviando URL directa al SDK:`, err);
+      currentContent.push({ type: "image", image: incomingMsg.photoUrl });
+    }
   }
+
 
   const historyWithNew = [...history, { role: "user", content: currentContent }];
 
@@ -318,11 +319,17 @@ export async function processAgentTurn(
   // ═══════════════════════════════════════════════════════════════════════
   // PARSER DE BLOQUEO (DEBE IR PRIMERO)
   // ═══════════════════════════════════════════════════════════════════════
+  console.log(`🤖 [IA RESPONSE] Turno para lead ${leadId}: "${text}"`);
+
   const blockMatch = text.match(/\[\[BLOCK:(\w+)\]\]/i);
+  const reasonMatch = text.match(/\[\[REASON:(.*?)\]\]/i);
+
   if (blockMatch) {
-    console.log(`🚫 [BLOCK] Bloqueo detectado: ${blockMatch[1]}`);
+    const aiReason = reasonMatch ? reasonMatch[1].trim() : null;
+    console.log(`🚫 [BLOCK] Bloqueo detectado: ${blockMatch[1]}. Razón: ${aiReason || "No especificada"}`);
+
     const blockReason = blockMatch[1] === "SURFACE_DAMAGE" 
-      ? "Superficie no apta (ladrillo/dañada)." 
+      ? (aiReason ? `IA: ${aiReason}` : "Superficie no apta (daño detectado).")
       : `Bloqueo automático: ${blockMatch[1]}`;
     await updateLeadStatus(leadId, "BLOCKED", blockReason);
 
@@ -645,12 +652,10 @@ export async function processAgentTurn(
     Boolean(localScenario) &&
     localInstall !== null;
 
-  // ── Guardia: si la cotización ya fue generada/cerrada, no volver a generarla
-  // a menos que el LLM emita [[GENERATE_QUOTE]] explícitamente (caso: cliente pide recotizar).
   const quoteAlreadyDone =
     context.currentStage === "QUOTE_GENERATED" ||
     context.currentStage === "CLOSED_WON" ||
-    Boolean(context.quoteSummary); // hay una cotización guardada en DB
+    context.currentStage === "CLOSED_LOST";
 
   // needsQuote dispara cuando:
   // 1. El LLM emitió [[GENERATE_QUOTE]] explícitamente (siempre aplica)
@@ -693,7 +698,7 @@ export async function processAgentTurn(
       console.log(`🖼️ [IMAGE_BANK] Se enviarán ${urls.length} imágenes del banco al cliente.`);
       
       // Inyectamos un mensaje fijo para evitar que el LLM divague o invente URLs
-      text = "¡Perfecto! Te paso algunas opciones de nuestro banco de imágenes para que vayas viendo. 🖼️\n\nPodés elegir la que más te guste indicándonos cuál es o reenviándonos la foto para avanzar. Esto ya incluye una tarifa de diseño fija.";
+      text = "¡Perfecto! Te paso algunas opciones de nuestro banco de imágenes para que vayas viendo.\n\nPodés elegir la que más te guste indicándonos cuál es o reenviándonos la foto para avanzar. Esto ya incluye una tarifa de diseño fija.";
     }
   }
 
@@ -814,17 +819,17 @@ export async function processAgentTurn(
       let textBreakdown = "";
       if (quoteCalc.requiresHumanReview) {
         textBreakdown = 
-          `¡Perfecto! Aquí tenés tu presupuesto oficial preliminar. Te lo envío también como PDF para que lo puedas guardar. 📋\n\n` +
+          `¡Perfecto! Aquí tenés tu presupuesto oficial preliminar. Te lo envío también como PDF para que lo puedas guardar.\n\n` +
           `Dado el tamaño o las características del trabajo, este pedido requiere validación final por parte de nuestro equipo técnico, quienes confirmarán la viabilidad y el costo exacto${localInstall ? ' de instalación' : ''}.\n\n` +
           `Si querés, podemos seguir por este mismo chat para dejar asentado el diseño elegido y los próximos pasos.`;
       } else if (localScenario === "CUSTOM_DESIGN") {
         textBreakdown = 
-          `¡Perfecto! Aquí tenés tu presupuesto parcial. Te lo envío también como PDF para que lo puedas guardar. 📋\n\n` +
+          `¡Perfecto! Aquí tenés tu presupuesto parcial. Te lo envío también como PDF para que lo puedas guardar.\n\n` +
           `El total parcial de tu pedido (impresión y ${localInstall ? 'colocación' : 'retiro'}) es de **$${total.toLocaleString("es-UY")} ${quoteCalc.currency}** sin contemplar el costo de diseño.\n\n` +
           `Alguien de nuestro equipo de arte se va a estar contactando a la brevedad para ver el diseño acorde a lo que buscás y pasarte la cotización final de esa parte.`;
       } else {
         textBreakdown = 
-          `¡Perfecto! Aquí tenés tu presupuesto oficial. Te lo envío también como PDF para que lo puedas guardar. 📋\n\n` +
+          `¡Perfecto! Aquí tenés tu presupuesto oficial. Te lo envío también como PDF para que lo puedas guardar.\n\n` +
           `El total de tu pedido ${localInstall ? 'con instalación incluida' : 'retirando por el local'} es de **$${total.toLocaleString("es-UY")} ${quoteCalc.currency}**.\n\n` +
           `¿Te parece bien para avanzar con el pago y comenzar con el diseño?`;
       }

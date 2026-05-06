@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { LayoutDashboard, ShoppingCart } from "lucide-react";
+import { LayoutDashboard, ShoppingCart, Users } from "lucide-react";
 
 export default function DashboardLayout({
   children,
@@ -21,6 +21,10 @@ export default function DashboardLayout({
           <Link href="/dashboard/orders" className="flex items-center space-x-3 rounded-lg px-3 py-2 text-muted-foreground hover:bg-muted hover:text-foreground">
             <ShoppingCart size={20} />
             <span>Pedidos</span>
+          </Link>
+          <Link href="/dashboard/customers" className="flex items-center space-x-3 rounded-lg px-3 py-2 text-muted-foreground hover:bg-muted hover:text-foreground">
+            <Users size={20} />
+            <span>Clientes</span>
           </Link>
         </nav>
       </aside>

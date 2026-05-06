@@ -14,43 +14,39 @@ import {
 import { uploadAsset, downloadFile } from "@/lib/storage";
 import type { LeadStage } from "@/types/lead";
 
-/**
- * Detecta si el cliente hace referencia EXPLÍCITA al pedido anterior.
- * Si es así, NO creamos un nuevo lead — el cliente quiere info sobre su pedido.
- */
 function isPreviousOrderReference(text: string): boolean {
   const t = text.toLowerCase();
-  return [
+  // Incluimos frases de cierre o agradecimiento como parte del flujo actual
+  const closurePhrases = ["gracias", "muchas gracias", "ok", "vale", "entendido", "perfecto", "buenísimo", "buenisimo", "chau", "hasta luego"];
+  const trackingPhrases = [
     "mi pedido", "mi encargo", "el pedido", "el encargo",
     "cuándo llega", "cuando llega", "cuándo está", "cuando está",
-    "estado del pedido", "seguimiento", "track",
+    "estado del pedido", "seguimiento", "track", "tracking", "status",
     "lo que pedí", "lo que encargué", "lo que compré",
-    "el vinilo que", "el ploteo que", "el presupuesto que",
-    "factura", "comprobante", "pago", "pagué", "pague",
-  ].some((p) => t.includes(p));
+    "pagué", "pague", "comprobante", "transferencia", "envié el pago"
+  ];
+  return [...closurePhrases, ...trackingPhrases].some((p) => t.includes(p));
 }
 
-/**
- * Detecta si un cliente (con pedido anterior CERRADO) quiere iniciar un nuevo pedido.
- * Cualquier saludo genérico o frase de nuevo pedido activa esto,
- * EXCEPTO si hace referencia al pedido anterior.
- */
 function isNewOrderIntent(text: string): boolean {
-  if (isPreviousOrderReference(text)) return false;
   const t = text.toLowerCase();
-  // Saludos genéricos → intención implícita de nuevo pedido
+  // Saludos genéricos solo disparan nuevo pedido si NO hay un pedido abierto o reciente.
+  // Pero aquí solo definimos si el TEXTO sugiere un nuevo pedido.
   const greetings = [
     "hola", "buen día", "buenos días", "buenas tardes", "buenas noches",
-    "buenas", "hey", "buen dia",
+    "buenas", "hey", "buen dia"
   ];
   // Frases explícitas de nuevo pedido
   const newOrderPhrases = [
     "otro pedido", "nuevo pedido", "otra cotización", "otra cotizacion",
     "quiero cotizar", "quiero otro", "necesito otro", "hacer otro",
-    "quiero pedir", "quiero encargar", "necesito un vinilo", "me interesa",
-    "quisiera", "necesito", "quiero",
+    "quiero pedir", "quiero encargar", "necesito un vinilo"
   ];
-  return [...greetings, ...newOrderPhrases].some((p) => t.includes(p));
+  // Si solo dice "hola" o similar, es un saludo.
+  // Si contiene palabras de precio sin ser un seguimiento, podría ser nuevo pedido.
+  const priceInquiry = ["cuanto sale", "cuánto sale", "precio", "valor", "costo"].some(p => t.includes(p));
+
+  return newOrderPhrases.some((p) => t.includes(p)) || (greetings.includes(t.trim()) && t.length < 15);
 }
 
 /**
@@ -116,12 +112,28 @@ export async function POST(request: Request) {
     let currentStage: LeadStage;
     let phone: string | null = null;
 
-    if (existingLead && existingLead.current_stage === "CLOSED_WON") {
-      // ── Cliente recurrente con pedido cerrado ──────────────────────────────
-      // Si no hace referencia al pedido anterior → nuevo lead (pedido nuevo)
-      // Si pregunta por su pedido anterior → modo post-venta, mismo lead
-      if (isNewOrderIntent(text)) {
-        console.log(`🆕 [NEW ORDER] Lead ${existingLead.id} en CLOSED_WON. Creando nuevo lead para chat ${chatId}.`);
+    const COMPLETED_STAGES: string[] = ["CLOSED_WON", "CLOSED_LOST", "QUOTE_GENERATED"];
+
+    if (existingLead && COMPLETED_STAGES.includes(existingLead.current_stage)) {
+      // ── Cliente recurrente con pedido previo (cerrado o cotizado) ──────────
+      const isFollowUp = isPreviousOrderReference(text);
+      const isNewIntent = hasPhoto || hasDocument || isNewOrderIntent(text);
+      
+      // SI el lead está CERRADO (WON/LOST), somos mucho más estrictos:
+      const isTerminal = existingLead.current_stage === "CLOSED_WON" || existingLead.current_stage === "CLOSED_LOST";
+      
+      // Si es terminal, creamos nuevo si NO es un seguimiento explícito.
+      // Si es solo QUOTE_GENERATED, NO creamos nuevo a menos que pida explícitamente "otro" o "nuevo".
+      let shouldCreateNew = false;
+      if (isTerminal) {
+        shouldCreateNew = !isFollowUp;
+      } else {
+        // En QUOTE_GENERATED
+        shouldCreateNew = isNewOrderIntent(text) && (text.includes("otro") || text.includes("nuevo"));
+      }
+
+      if (shouldCreateNew) {
+        console.log(`🆕 [NEW ORDER] Lead previo ${existingLead.id} en estado ${existingLead.current_stage}. Creando nuevo lead.`);
         const newLead = buildLeadRecord({
           fullName: fromName || null,
           channel: "TELEGRAM",
@@ -130,14 +142,17 @@ export async function POST(request: Request) {
         const { error: newLeadError } = await supabase.from("b2c_leads").insert(newLead);
         if (newLeadError) {
           console.error("Error creating new lead for returning customer:", newLeadError);
-          await sendMessage(chatId, "Ocurrió un error. Intentá de nuevo en unos minutos. 😕");
+          await sendMessage(chatId, "Ocurrió un error. Intentá de nuevo en unos minutos.");
           return NextResponse.json({ ok: true });
         }
         leadId = newLead.id;
         currentStage = "INITIAL_CONTACT";
+        
+        // Limpiamos historial previo en Redis para que el agente empiece de cero
+        await redis.del(`chat:${leadId}:history`);
       } else {
-        // Pregunta sobre pedido anterior → usar lead existente en modo post-venta
-        console.log(`📦 [POST-SALE] Lead ${existingLead.id} en CLOSED_WON. Modo post-venta.`);
+        // Pregunta sobre pedido previo → usar lead existente
+        console.log(`📦 [FOLLOW-UP] Lead ${existingLead.id} en ${existingLead.current_stage}. Continuando con el mismo lead.`);
         leadId = existingLead.id;
         currentStage = existingLead.current_stage as LeadStage;
         phone = existingLead.phone;
@@ -156,7 +171,7 @@ export async function POST(request: Request) {
       const { error } = await supabase.from("b2c_leads").insert(newLead);
       if (error) {
         console.error("Error creating lead:", error);
-        await sendMessage(chatId, "Ocurrió un error. Intentá de nuevo en unos minutos. 😕");
+        await sendMessage(chatId, "Ocurrió un error. Intentá de nuevo en unos minutos.");
         return NextResponse.json({ ok: true });
       }
 
@@ -336,7 +351,7 @@ export async function POST(request: Request) {
       console.error("❌ [ERROR AGENTE] Vercel AI SDK falló:", agentError);
       await sendMessage(
         chatId,
-        "Disculpá, estoy teniendo un problema técnico. 😕 ¿Podés intentar de nuevo en unos segundos?"
+        "Disculpá, estoy teniendo un problema técnico. ¿Podés intentar de nuevo en unos segundos?"
       );
     }
 

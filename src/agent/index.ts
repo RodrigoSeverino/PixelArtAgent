@@ -827,6 +827,12 @@ export async function processAgentTurn(
           `¡Perfecto! Aquí tenés tu presupuesto parcial. Te lo envío también como PDF para que lo puedas guardar.\n\n` +
           `El total parcial de tu pedido (impresión y ${localInstall ? 'colocación' : 'retiro'}) es de **$${total.toLocaleString("es-UY")} ${quoteCalc.currency}** sin contemplar el costo de diseño.\n\n` +
           `Alguien de nuestro equipo de arte se va a estar contactando a la brevedad para ver el diseño acorde a lo que buscás y pasarte la cotización final de esa parte.`;
+      } else if (localScenario === "READY_FILE") {
+        textBreakdown = 
+          `¡Perfecto! Aquí tenés tu presupuesto estimado. Te lo envío también como PDF para que lo puedas guardar.\n\n` +
+          `El total de tu pedido ${localInstall ? 'con instalación incluida' : 'retirando por el local'} es de **$${total.toLocaleString("es-UY")} ${quoteCalc.currency}**.\n\n` +
+          `*Aclaración importante: Alguien de nuestro equipo se contactará a la brevedad para analizar la resolución y calidad de la foto o archivo que nos enviaste, y así confirmar que es apto para imprimir en ese tamaño.*\n\n` +
+          `¿Te parece bien para avanzar?`;
       } else {
         textBreakdown = 
           `¡Perfecto! Aquí tenés tu presupuesto oficial. Te lo envío también como PDF para que lo puedas guardar.\n\n` +

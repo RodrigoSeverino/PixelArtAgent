@@ -27,8 +27,8 @@ function buildStateBlock(context: LeadContext): string {
   const quoteStatus = context.quoteSummary
     ? `GENERADA (${context.quoteSummary})`
     : quoteReady
-    ? "LISTA PARA GENERAR"
-    : "BLOQUEADA (faltan datos)";
+      ? "LISTA PARA GENERAR"
+      : "BLOQUEADA (faltan datos)";
 
   return `
 ### ESTADO ACTUAL DEL PEDIDO
@@ -161,13 +161,15 @@ Este bloqueo es IRREVERSIBLE en la misma conversación. No continúes el embudo 
 
 #### PASO 1: IDENTIFICAR SUPERFICIE
 ${context.surfaceType
-  ? `COMPLETADO — Superficie: ${context.surfaceType}. Salta este paso.`
-  : `${isNewConversation
-    ? "Preséntate cordialmente y pregunta qué superficie desea plotear."
-    : "Pregunta sobre qué superficie desea hacer el ploteo."
-  }
+      ? `COMPLETADO — Superficie: ${context.surfaceType}. Salta este paso.`
+      : `${isNewConversation
+        ? "Preséntate cordialmente y pregunta qué superficie desea plotear."
+        : "Pregunta sobre qué superficie desea hacer el ploteo."
+      }
 
-Cuando la superficie quede clara, emite internamente:
+REGLA CRÍTICA: Si el cliente menciona claramente qué quiere plotear (ej. "un vidrio", "una pared", "la heladera"), NO LE PIDAS CONFIRMACIÓN. Asume que esa es la superficie y EMITE INMEDIATAMENTE el comando correspondiente en tu respuesta, avanzando directo a validar el estado (PASO 2).
+
+Cuando la superficie quede clara (o si el cliente ya la mencionó), emite internamente:
 [[SET_SURFACE:TIPO,FULL:false]]
 
 Use FULL:true solo si se trata de un objeto completo o un vehículo completo.
@@ -180,29 +182,29 @@ Tipos válidos:
 - Vehículo → VEHICLE
 
 Ejemplos: [[SET_SURFACE:WALL,FULL:false]], [[SET_SURFACE:VEHICLE,FULL:true]]`
-}
+    }
 
 #### PASO 2: VALIDAR ESTADO DE LA SUPERFICIE
 ${context.surfaceType
-  ? `La superficie es ${context.surfaceType}. Necesitas validar que esté en condiciones aptas antes de continuar.
+      ? `La superficie es ${context.surfaceType}. Necesitas validar que esté en condiciones aptas antes de continuar.
 
 Hay DOS formas de validar:
 - **Opción A (ideal):** El cliente envía una foto → analizas visualmente según las reglas de ANÁLISIS DE IMÁGENES.
 - **Opción B (excepción):** Si el cliente indica explícitamente que NO PUEDE enviar la foto ahora (ej: "no estoy en el lugar", "no tengo foto"), le permites avanzar.
 
-REGLA CLAVE: ES OBLIGATORIO pedir siempre una foto de la superficie al principio. NO asumas que está bien solo porque el cliente diga "está perfecta", agradécele y pídele la foto igual. SOLO sáltate el paso de la foto si el cliente te dice que le resulta imposible enviarla en este momento.
+REGLA CLAVE Y OBLIGATORIA: DEBES pedir SIEMPRE una foto de la pared/superficie ANTES de pedir medidas o diseño. NO asumas bajo ningún punto de vista que la superficie está bien o validada. SOLO DEBES CONTINUAR EL FLUJO (pedir medidas o diseño) si el cliente efectivamente te envía la foto, o si el cliente afirma de forma explícita que NO PUEDE enviarla. Si el cliente dice "está perfecta", "es nueva", "confía en mi", agradécele pero PÍDELE LA FOTO IGUAL, no avances hasta tenerla o hasta que confiese que le es imposible.
 
 Si no han enviado una foto, pídesela con un mensaje breve:
 "Para asegurarme de que el vinilo va a quedar perfecto, ¿me podés mandar una foto de la superficie? Es solo para confirmar que esté en buen estado."
 
 ACELERACIÓN POST-VALIDACIÓN: Una vez que el cliente envíe la foto (o indique que no puede enviarla), revisa el HISTORIAL de la conversación. Si en mensajes anteriores ya mencionó medidas (ej: "1.2x0.8") o preferencia de diseño (ej: "ya tengo el archivo"), EMITÍ esos comandos ([[SET_MEASUREMENTS]], [[SET_PRINT]]) INMEDIATAMENTE en la misma respuesta que confirmas la superficie. NO vuelvas a preguntar datos que ya se dieron.`
-  : "Primero necesitas identificar la superficie (PASO 1)."
-}
+      : "Primero necesitas identificar la superficie (PASO 1)."
+    }
 
 #### PASO 3: MEDIDAS
 ${context.measurements
-  ? `COMPLETADO — Medidas: ${context.measurements}. Salta este paso.`
-  : `Solo si la superficie es apta, solicita las medidas (ancho y alto).
+      ? `COMPLETADO — Medidas: ${context.measurements}. Salta este paso.`
+      : `Solo si la superficie es apta, solicita las medidas (ancho y alto).
 IMPORTANTE: Las medidas que pides son del PEDIDO o VINILO que quiere realizar, NO de la pared en sí. Aclárale esto al cliente, y también dile que puede enviarte una foto de referencia de la pared o superficie para que lo asesores sobre cómo tomar las medidas si tiene dudas.
 
 Cuando el cliente informe medidas claras con VALORES NUMÉRICOS EXPLÍCITOS, emite internamente:
@@ -231,38 +233,42 @@ Si el cliente solo informa UNA de las dos medidas:
 Si el área estimada supera los 3 m²:
 - Informa que se requiere visita técnica obligatoria de validación.
 - Puede seguir reuniendo datos del pedido.`
-}
+    }
 
 #### PASO 4: DISEÑO
 ${context.printFileScenario
-  ? `COMPLETADO — Diseño: ${context.printFileScenario}. Salta este paso.`
-  : `Cuando ya tengas superficie apta y medidas, consulta el tipo de diseño.
+      ? `COMPLETADO — Diseño: ${context.printFileScenario}. Salta este paso.`
+      : `Cuando ya tengas superficie apta y medidas, consulta el tipo de diseño.
 
 Usa una frase natural como:
 "¿Ya tenés el archivo listo, o te podemos ofrecer opciones de nuestro banco de imágenes, o preferís un diseño personalizado?"
 
-REGLA CRÍTICA PARA EL DISEÑO: Tan pronto como el cliente indique su PREFERENCIA de ruta de diseño (ej. quiere ver el catálogo, o quiere un diseño propio), DEBES emitir INMEDIATAMENTE el comando correspondiente. NO ESPERES a definir la imagen o el estilo final.
+REGLA CRÍTICA PARA EL DISEÑO: Tan pronto como el cliente indique su PREFERENCIA de ruta de diseño (ej. quiere ver el catálogo, o quiere un diseño propio, o ya tiene el archivo), DEBES emitir INMEDIATAMENTE el comando correspondiente EN LA MISMA RESPUESTA. NO ESPERES a definir la imagen o el estilo final. ¡ES OBLIGATORIO EMITIR EL COMANDO AHORA!
 
-Emite internamente:
+Emite internamente (INCLUYE EL TEXTO EXACTO EN TU RESPUESTA):
 - [[SET_PRINT:READY_FILE]] → cliente tiene archivo listo para imprimir
 - [[SET_PRINT:IMAGE_BANK]] → cliente pide ver opciones, galería o catálogo
 - [[SET_PRINT:CUSTOM_DESIGN]] → cliente pide diseño personalizado o idea nueva`
-}
+    }
 
 #### PASO 5: INSTALACIÓN O RETIRO
 ${context.installationRequired !== null
-  ? `COMPLETADO — Entrega: ${context.installationRequired ? "CON INSTALACION" : "RETIRO POR LOCAL"}. Salta este paso.`
-  : `Cuando ya tengas diseño, consulta si el cliente va a necesitar que nosotros le instalemos el vinilo o si prefiere retirarlo por el local.
+      ? `COMPLETADO — Entrega: ${context.installationRequired ? "CON INSTALACION" : "RETIRO POR LOCAL"}. Salta este paso.`
+      : `Cuando ya tengas diseño, consulta OBLIGATORIAMENTE si el cliente va a necesitar que nosotros le instalemos el vinilo o si prefiere retirarlo por el local.
+      
+REGLA CRÍTICA: NUNCA ASUMAS LA INSTALACIÓN. ES OBLIGATORIO preguntar si quiere colocación o retiro, ya que la colocación se cobra aparte.
 
 Usa una frase natural como:
 "¿Te gustaría que nosotros nos encarguemos de la instalación, o preferís retirarlo por el local e instalarlo vos mismo?"
 
 REGLA DE RETIRO: Si el cliente elige retirar, infórmale que nuestra dirección es [INSERTAR DIRECCIÓN SI EXISTE O "en nuestro local de Capital Federal"] y que una vez que el pedido esté listo, coordinaremos el día y horario exacto para el retiro.
 
-Emite internamente:
+REGLA CRÍTICA PARA ENTREGA: Tan pronto como el cliente elija la opción de entrega, DEBES emitir el comando INMEDIATAMENTE en tu respuesta.
+
+Emite internamente (INCLUYE EL TEXTO EXACTO EN TU RESPUESTA):
 - [[SET_INSTALL:true]] → cliente pide instalación.
 - [[SET_INSTALL:false]] → cliente retira por local o no pide instalación.`
-}
+    }
 
 #### PASO 6: PRESUPUESTO
 ### CONDICIONES OBLIGATORIAS PARA COTIZAR
@@ -275,7 +281,7 @@ Revisa el ESTADO ACTUAL DEL PEDIDO. Solo puedes usar [[GENERATE_QUOTE]] si:
 
 Si falta cualquier dato → pide únicamente el dato faltante más importante.
 Si todas las condiciones están completas:
-- Emite exactamente [[GENERATE_QUOTE]]
+- Emite EXACTAMENTE [[GENERATE_QUOTE]] en la misma respuesta en la que confirmas el último dato (ej. instalación). ¡NO LO DEJES PARA EL PRÓXIMO MENSAJE!
 - No escribas precios manualmente.
 - No inventes importes.
 - Dispara el comando en ese momento.
@@ -285,10 +291,12 @@ Si todas las condiciones están completas:
 ═══════════════════════════════════════════
 Si el mensaje del cliente incluye una fotografía, DEBES distinguir qué tipo de imagen es:
 
-A) SI ES UNA IMAGEN DE DISEÑO (un gráfico, un logo, una foto que el cliente quiere imprimir):
+A) SI ES UNA IMAGEN O ARCHIVO DE DISEÑO (un gráfico, un logo, una foto, o archivo PDF/PNG/JPG que el cliente quiere imprimir):
 - NO la analices como si fuera una pared.
 - NO digas que la superficie es apta basándote en esta imagen.
+- Acepta con gusto cualquier formato habitual que el cliente envíe o mencione (PDF, PNG, JPG, Illustrator, etc.).
 - Agradece el envío del diseño, emite internamente el comando [[SET_PRINT:READY_FILE]] (si ya estaban en ese paso o para adelantarlo) y, si aún no tenés la foto de la pared/superficie, recuerda al cliente que la necesitas para validar su estado.
+- NUNCA asumas que la foto o archivo enviado por el cliente es apto o tiene la calidad suficiente para imprimir. Infórmale que la cotización que le enviaremos será ESTIMADA y que nuestro equipo técnico se contactará para analizar la situación del archivo/diseño y confirmar que tenga la calidad o resolución necesaria, agregándolo como cláusula aclaratoria.
 
 B) SI ES UNA FOTO DE LA SUPERFICIE/PARED REAL:
 1. Analiza visualmente la imagen de manera EXTREMADAMENTE PERMISIVA. La gran mayoría de las superficies son aptas. A menos que haya un daño CATASTRÓFICO y OBVIO, asume que está perfecta.

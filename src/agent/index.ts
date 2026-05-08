@@ -165,6 +165,7 @@ function cleanAssistantText(text: string): string {
     .replace(/\[\[GENERATE_QUOTE\]\]/g, "")
     .replace(/\[\[SET_.*?\]\]/g, "")
     .replace(/\[\[BLOCK:.*?\]\]/g, "")
+    .replace(/\[\[CLOSE_DEAL\]\]/g, "")
     .replace(/^\s*\(.*?cotizaci[oó]n.*?\)\s*$/gim, "")
     .replace(/^\s*\(.*?b[uú]squeda.*?im[aá]genes.*?\)\s*$/gim, "")
     .replace(/XXXX|incluya el monto.*?aquí|precio real calculado/gi, "")
@@ -621,6 +622,17 @@ export async function processAgentTurn(
     }
   }
 
+  // --- PARSER DE DIRECCIÓN ---
+  const addrMatch = text.match(/\[\[SET_ADDRESS:\s*(.*?)\s*\]\]/i);
+  if (addrMatch) {
+    const newAddress = addrMatch[1].trim();
+    console.log(`🏠 [ADDRESS] Dirección detectada: ${newAddress}`);
+    await supabase
+      .from("b2c_leads")
+      .update({ address: newAddress, updated_at: now })
+      .eq("id", leadId);
+  }
+
   // ─── MERGE: siempre combinar valores del turno actual con el contexto persistido ───
   // Esto evita que un dato respondido en un turno anterior sea ignorado en el siguiente.
   if (localInstall === null && context.installationRequired !== null) {
@@ -688,9 +700,9 @@ export async function processAgentTurn(
     text = commandText + "¡Perfecto! Podés ver nuestro catálogo completo de imágenes acá: https://pixel-art-agent.vercel.app/catalog\n\nCuando elijas una, avisame cuál te gustó. Tené en cuenta que la imagen va a ser recreada tal cual está en el banco de imágenes. Esto ya incluye una tarifa fija de diseño.";
   }
 
-  // Enviar surface_guide cuando el agente acaba de detectar la superficie por primera vez
-  const surfaceJustDetected = !context.surfaceType && Boolean(localSurfaceType);
-  if (surfaceJustDetected) {
+  // Enviar surface_guide SOLO si el agente está pidiendo la superficie y NO la tenemos
+  const askingForSurface = !localSurfaceType && /superficie|pared|madera|vidrio|heladera|veh[íi]culo|donde|dónde/i.test(text);
+  if (askingForSurface && !context.surfaceType) {
     const surfaceGuideUrl = await getGuideImageUrl("surface");
     if (surfaceGuideUrl) outgoingImages.push(surfaceGuideUrl);
   }
@@ -700,7 +712,7 @@ export async function processAgentTurn(
     Boolean(localSurfaceType) &&
     !localM2 &&
     /medid|ancho|alto|cuánto|cuanto|mide|tama[ñn]o|dimension|largo|profundidad/i.test(text);
-  if (askingForMeasures) {
+  if (askingForMeasures && !context.measurements) {
     const measureGuideUrl = await getGuideImageUrl("measure");
     if (measureGuideUrl) outgoingImages.push(measureGuideUrl);
   }
@@ -842,6 +854,7 @@ export async function processAgentTurn(
           estimatedTotal: total,
           currency: quoteCalc.currency,
           printFileScenario: localScenario!,
+          orderNumber: context.orderNumber || undefined,
         });
 
         const { url, error: pdfUploadError } = await uploadAsset(
@@ -896,6 +909,8 @@ export async function processAgentTurn(
 
   if (text.includes("[[CLOSE_DEAL]]")) {
     await updateLeadStatus(leadId, "CLOSED_WON");
+    // Mensaje de cierre específico solicitado por el usuario
+    text = "Gracias por tu compra. Tu pedido está confirmado y pronto nos estaremos contactando para coordinar la instalación.";
   }
 
   let finalCleanup = cleanAssistantText(text);

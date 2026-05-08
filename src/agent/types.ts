@@ -55,6 +55,12 @@ export interface LeadContext {
 
   /** Resumen de cotización si ya existe */
   quoteSummary: string | null;
+
+  /** Número de orden autogenerado (para el PDF) */
+  orderNumber: number | null;
+
+  /** Dirección de instalación */
+  address: string | null;
 }
 
 /* ============================================

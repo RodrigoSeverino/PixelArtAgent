@@ -99,7 +99,9 @@ COMANDOS DISPONIBLES:
 - [[SET_MEASUREMENTS: W:metros, H:metros]] → Cuando el cliente da medidas completas. Ejemplo: [[SET_MEASUREMENTS: W:1.2, H:0.8]]
 - [[SET_PRINT:ESCENARIO]] → Cuando el cliente elige diseño. Ejemplo: [[SET_PRINT:CUSTOM_DESIGN]]
 - [[SET_INSTALL:bool]] → Cuando el cliente elige si necesita instalación (true) o si retira por el local (false). Ejemplo: [[SET_INSTALL:true]]
+- [[SET_ADDRESS:dirección]] → Cuando el cliente brinda la dirección para instalación. Ejemplo: [[SET_ADDRESS: Calle Falsa 123, CABA]]
 - [[GENERATE_QUOTE]] → Cuando todos los datos están completos y se debe cotizar.
+
 - [[BLOCK:SURFACE_DAMAGE]] → Cuando la superficie tiene humedad, óxido o daño.
 - [[CLOSE_DEAL]] → Cuando el cliente confirma el pedido.
 
@@ -273,7 +275,9 @@ REGLA CRÍTICA PARA ENTREGA: Tan pronto como el cliente elija la opción de entr
 
 Emite internamente (DEBES INCLUIR UNO DE ESTOS TEXTOS EXACTOS EN TU RESPUESTA O EL FLUJO FALLARÁ):
 - [[SET_INSTALL:true]] → cliente pide instalación.
-- [[SET_INSTALL:false]] → cliente retira por local o no pide instalación.`
+- [[SET_INSTALL:false]] → cliente retira por local o no pide instalación.
+
+REGLA DE DIRECCIÓN Y TELÉFONO: Si el cliente elige instalación ([[SET_INSTALL:true]]), DEBES pedirle la dirección exacta y un teléfono de contacto para coordinar. Cuando el usuario brinde la dirección, emite INMEDIATAMENTE el comando [[SET_ADDRESS: la dirección]]. No avances a la cotización final hasta tener al menos una mención de la ubicación si hay instalación.`
     }
 
 #### PASO 6: PRESUPUESTO

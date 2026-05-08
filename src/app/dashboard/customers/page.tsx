@@ -121,7 +121,15 @@ export default function CustomersPage() {
                     </td>
                     <td className="px-4 py-4 text-right">
                       <div className="flex justify-end gap-2">
+                        <a
+                          href={`/dashboard/customers/${customer.telegram_chat_id}/orders`}
+                          className="p-1.5 hover:bg-primary/10 rounded text-muted-foreground hover:text-primary transition-colors"
+                          title="Ver historial de pedidos"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+                        </a>
                         {confirmDeleteId === customer.id ? (
+
                           <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/20 p-1 rounded-lg animate-in fade-in slide-in-from-right-2 duration-200">
                             <span className="text-[10px] font-bold text-red-400 px-2">¿Borrar?</span>
                             <button

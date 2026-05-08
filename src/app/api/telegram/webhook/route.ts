@@ -134,18 +134,21 @@ export async function POST(request: Request) {
       }
 
       if (shouldCreateNew) {
-        console.log(`🆕 [NEW ORDER] Lead previo ${existingLead.id} en estado ${existingLead.current_stage}. Cerrando previo y creando nuevo.`);
+        console.log(`🆕 [NEW ORDER] Lead previo ${existingLead.id} en estado ${existingLead.current_stage}. Creando nuevo.`);
         
-        // 1. "Cerrar" el lead anterior para que no se use más
-        await supabase
-          .from("b2c_leads")
-          .update({ 
-            current_stage: "CLOSED_LOST", 
-            observation: "Cerrado automáticamente por inicio de nuevo pedido/consulta." 
-          })
-          .eq("id", existingLead.id);
+        // 1. Solo "cerramos" el anterior si NO era terminal (ej. estaba en QUOTE_GENERATED pero abandona para empezar otro)
+        if (!isTerminal) {
+          await supabase
+            .from("b2c_leads")
+            .update({ 
+              current_stage: "CLOSED_LOST", 
+              observation: "Cerrado automáticamente por inicio de nuevo pedido/consulta." 
+            })
+            .eq("id", existingLead.id);
+        }
 
         // 2. Crear el nuevo lead
+
         const newLead = buildLeadRecord({
           fullName: fromName || null,
           channel: "TELEGRAM",
@@ -208,19 +211,23 @@ export async function POST(request: Request) {
           photoUrl = url;
 
           if (photoUrl) {
+            const isSurfacePhoto = currentStage === "INITIAL_CONTACT" || currentStage === "SURFACE_SELECTED";
+            
             // Guardar como asset
             await supabase.from("b2c_lead_assets").insert({
               lead_id: leadId,
-              asset_type: "SURFACE_PHOTO",
+              asset_type: isSurfacePhoto ? "SURFACE_PHOTO" : "DESIGN_FILE",
               file_url: photoUrl,
               file_name: `photo_${Date.now()}.jpg`,
             });
 
-            // Actualizar assessment
-            await supabase
-              .from("b2c_surface_assessments")
-              .update({ photo_url: photoUrl, updated_at: new Date().toISOString() })
-              .eq("lead_id", leadId);
+            if (isSurfacePhoto) {
+              // Actualizar assessment
+              await supabase
+                .from("b2c_surface_assessments")
+                .update({ photo_url: photoUrl, updated_at: new Date().toISOString() })
+                .eq("lead_id", leadId);
+            }
           }
         }
       }
@@ -400,9 +407,25 @@ async function buildLeadContext(
     printFileScenario: null,
     quoteSummary: null,
     installationRequired: null,
+    orderNumber: null,
+    address: null,
   };
 
   try {
+    // Traer datos básicos del Lead
+    const { data: leadData } = await supabase
+      .from("b2c_leads")
+      .select("order_number, address, phone, full_name")
+      .eq("id", leadId)
+      .single();
+
+    if (leadData) {
+      context.orderNumber = leadData.order_number;
+      context.address = leadData.address;
+      context.phone = leadData.phone || phone;
+      context.customerName = leadData.full_name || customerName;
+    }
+
     // Traer Superficie (última valoración)
     const { data: surfaceData } = await supabase
       .from("b2c_surface_assessments")

@@ -598,16 +598,9 @@ export async function processAgentTurn(
     }
   }
 
-  // Auto-sense de instalación desde el texto de RESPUESTA del LLM (confirma en lenguaje natural)
-  if (localInstall === null) {
-    const installFromAI = extractInstallFromText(text);
-    if (installFromAI !== null) {
-      localInstall = installFromAI;
-      console.log(`🔍 [AUTO-SENSE INSTALL AI] → ${localInstall}`);
-    }
-  }
-
-  // Si detectamos instalación en este turno pero no estaba en DB, la guardamos
+  // Auto-sense de instalación desde el texto de RESPUESTA del LLM fue removido 
+  // porque generaba falsos positivos (parseaba sus propias preguntas como respuestas).
+  // Solo se usa el comando interno [[SET_INSTALL:true/false]].  // Si detectamos instalación en este turno pero no estaba en DB, la guardamos
   if (localInstall !== null && context.installationRequired === null) {
     const { error: installAutoSaveError } = await supabase
       .from("b2c_quotes")
@@ -686,20 +679,8 @@ export async function processAgentTurn(
 
   // Si se acaba de elegir IMAGE_BANK, buscamos imágenes para enviar
   if (localScenario === "IMAGE_BANK" && context.printFileScenario !== "IMAGE_BANK") {
-    const { data: imagesData } = await supabase
-      .from("b2c_image_bank")
-      .select("image_url")
-      .eq("is_active", true)
-      .limit(8);
-
-    if (imagesData && imagesData.length > 0) {
-      const urls = imagesData.map(img => img.image_url);
-      outgoingImages.push(...urls);
-      console.log(`🖼️ [IMAGE_BANK] Se enviarán ${urls.length} imágenes del banco al cliente.`);
-      
-      // Inyectamos un mensaje fijo para evitar que el LLM divague o invente URLs
-      text = "¡Perfecto! Te paso algunas opciones de nuestro banco de imágenes para que vayas viendo.\n\nPodés elegir la que más te guste indicándonos cuál es o reenviándonos la foto para avanzar. Esto ya incluye una tarifa de diseño fija.";
-    }
+    // Inyectamos un mensaje fijo para derivar al catálogo web
+    text = "¡Perfecto! Podés ver nuestro catálogo completo de imágenes acá: https://pixelart.vercel.app/catalog\n\nCuando elijas una, avisame cuál te gustó. Tené en cuenta que la imagen va a ser recreada tal cual está en el banco de imágenes. Esto ya incluye una tarifa fija de diseño.";
   }
 
   // Enviar surface_guide cuando el agente acaba de detectar la superficie por primera vez

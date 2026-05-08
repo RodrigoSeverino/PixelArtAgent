@@ -61,8 +61,7 @@ export async function calculateQuote(params: CalculateQuoteParams) {
     estimatedExtraPrice = p.image_bank_cost;
   }
   if (params.printFileScenario === "CUSTOM_DESIGN") {
-    // La tarifa de diseño no se cobra en el presupuesto preliminar, se cotiza luego
-    estimatedExtraPrice = 0;
+    estimatedExtraPrice = 1500;
   }
 
   const requiresHumanReview =

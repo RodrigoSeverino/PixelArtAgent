@@ -15,6 +15,8 @@ interface Customer {
   orders_count: number;
   last_purchase_at: string;
   created_at: string;
+  address?: string;
+  payment_status?: string;
 }
 
 export default function CustomersPage() {
@@ -31,7 +33,16 @@ export default function CustomersPage() {
       if (error) {
         console.error("Error fetching customers:", error);
       } else {
-        setCustomers(data || []);
+        const { data: leadsData } = await supabase
+          .from("b2c_leads")
+          .select("telegram_chat_id, payment_status")
+          .order("created_at", { ascending: false });
+
+        const enriched = data?.map((c) => {
+          const lead = leadsData?.find((l) => l.telegram_chat_id === c.telegram_chat_id);
+          return { ...c, payment_status: lead?.payment_status || "PENDING" };
+        });
+        setCustomers(enriched || []);
       }
       setLoading(false);
     }
@@ -59,11 +70,10 @@ export default function CustomersPage() {
             <table className="w-full text-left">
               <thead className="border-b bg-muted/50">
                 <tr>
-                  <th className="px-4 py-3 font-medium">Nombre</th>
-                  <th className="px-4 py-3 font-medium">Telegram ID</th>
-                  <th className="px-4 py-3 font-medium">Pedidos</th>
-                  <th className="px-4 py-3 font-medium">Total Gastado</th>
-                  <th className="px-4 py-3 font-medium">Última Compra</th>
+                  <th className="px-4 py-3 font-medium">Nombre y Contacto</th>
+                  <th className="px-4 py-3 font-medium">Dirección</th>
+                  <th className="px-4 py-3 font-medium">Estado de Pago</th>
+                  <th className="px-4 py-3 font-medium">Fecha de Compra</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
@@ -72,10 +82,24 @@ export default function CustomersPage() {
                     <td className="px-4 py-4">
                       <div className="font-semibold">{customer.full_name || "Sin nombre"}</div>
                       <div className="text-sm text-muted-foreground">{customer.phone || "Sin teléfono"}</div>
+                      <div className="text-xs text-muted-foreground font-mono mt-1">ID: {customer.telegram_chat_id || "-"}</div>
                     </td>
-                    <td className="px-4 py-4 text-sm font-mono">{customer.telegram_chat_id || "-"}</td>
-                    <td className="px-4 py-4">{customer.orders_count}</td>
-                    <td className="px-4 py-4 font-semibold">${customer.total_spent.toLocaleString("es-UY")}</td>
+                    <td className="px-4 py-4">
+                      {customer.address ? (
+                        <span className="text-sm">{customer.address}</span>
+                      ) : (
+                        <span className="text-sm text-muted-foreground italic">Sin dirección</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-4">
+                      <span className={`px-2 py-1 rounded text-xs font-semibold ${
+                        customer.payment_status === 'PAID' 
+                          ? 'bg-green-100 text-green-800' 
+                          : 'bg-yellow-100 text-yellow-800'
+                      }`}>
+                        {customer.payment_status === 'PAID' ? 'Abonó' : 'Pendiente'}
+                      </span>
+                    </td>
                     <td className="px-4 py-4 text-sm text-muted-foreground">
                       {customer.last_purchase_at
                         ? format(new Date(customer.last_purchase_at), "PPP", { locale: es })

@@ -35,6 +35,7 @@ const STAGE_BADGE_STYLES: Record<string, string> = {
 
 type Order = {
   id: string;
+  order_number?: number;
   telegram_chat_id: string;
   name: string;
   current_stage: string;
@@ -64,15 +65,10 @@ type Order = {
 export default function OrdersPage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showAll, setShowAll] = useState(false);
 
   const fetchOrders = async () => {
     setLoading(true);
-    let query = supabase.from("b2c_leads").select("*");
-    
-    if (!showAll) {
-      query = query.neq("current_stage", "CLOSED_LOST");
-    }
+    let query = supabase.from("b2c_leads").select("*").neq("current_stage", "CLOSED_LOST");
     
     const { data: leadsData, error: leadsError } = await query.order("created_at", { ascending: false });
 
@@ -99,6 +95,7 @@ export default function OrdersPage() {
 
       return {
         id: lead.id,
+        order_number: lead.order_number,
         telegram_chat_id: lead.telegram_chat_id,
         name: lead.full_name || "Cliente Telegram",
         current_stage: lead.current_stage,
@@ -126,7 +123,7 @@ export default function OrdersPage() {
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
-  }, [showAll]);
+  }, []);
 
   const updateStage = async (id: string, stage: string) => {
     const { error } = await supabase.from("b2c_leads").update({ current_stage: stage }).eq("id", id);
@@ -159,15 +156,6 @@ export default function OrdersPage() {
           <p className="text-muted-foreground mt-1 text-sm">Gestiona y monitorea los leads de PixelArt en tiempo real.</p>
         </div>
         <div className="flex items-center gap-4">
-          <label className="flex items-center gap-2 text-xs text-gray-400 cursor-pointer hover:text-white transition-colors">
-            <input 
-              type="checkbox" 
-              checked={showAll} 
-              onChange={(e) => setShowAll(e.target.checked)}
-              className="rounded border-white/10 bg-white/5 text-primary focus:ring-0"
-            />
-            Mostrar cancelados
-          </label>
           <button 
             onClick={fetchOrders}
             className="p-2 hover:bg-white/5 rounded-lg border border-white/10 transition-colors"
@@ -215,6 +203,9 @@ export default function OrdersPage() {
                     <td className="px-6 py-4">
                       <div className="flex flex-col">
                         <span className="text-white font-semibold text-base mb-0.5">{order.name}</span>
+                        {order.order_number && (
+                          <span className="text-sky-400 text-xs font-bold mb-0.5">Orden #{order.order_number}</span>
+                        )}
                         <span className="text-gray-500 text-xs font-mono">ID: {order.telegram_chat_id}</span>
                         <span className="text-gray-600 text-[10px] mt-1 italic">
                           {new Date(order.created_at).toLocaleDateString("es-AR", { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}

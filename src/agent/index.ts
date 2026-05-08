@@ -348,6 +348,7 @@ export async function processAgentTurn(
       documents: [],
       newStage: "BLOCKED",
       requiresHumanReview: true,
+      rawText: text
     };
   }
 
@@ -679,8 +680,12 @@ export async function processAgentTurn(
 
   // Si se acaba de elegir IMAGE_BANK, buscamos imágenes para enviar
   if (localScenario === "IMAGE_BANK" && context.printFileScenario !== "IMAGE_BANK") {
+    // Preservemos cualquier comando [[...]] que el modelo haya emitido
+    const commands = text.match(/\[\[[^\]]+\]\]/g) || [];
+    const commandText = commands.length > 0 ? commands.join(" ") + " " : "";
+
     // Inyectamos un mensaje fijo para derivar al catálogo web
-    text = "¡Perfecto! Podés ver nuestro catálogo completo de imágenes acá: https://pixelart.vercel.app/catalog\n\nCuando elijas una, avisame cuál te gustó. Tené en cuenta que la imagen va a ser recreada tal cual está en el banco de imágenes. Esto ya incluye una tarifa fija de diseño.";
+    text = commandText + "¡Perfecto! Podés ver nuestro catálogo completo de imágenes acá: https://pixelart.vercel.app/catalog\n\nCuando elijas una, avisame cuál te gustó. Tené en cuenta que la imagen va a ser recreada tal cual está en el banco de imágenes. Esto ya incluye una tarifa fija de diseño.";
   }
 
   // Enviar surface_guide cuando el agente acaba de detectar la superficie por primera vez
@@ -694,7 +699,7 @@ export async function processAgentTurn(
   const askingForMeasures =
     Boolean(localSurfaceType) &&
     !localM2 &&
-    /medid|ancho|alto|cuánto|cuanto|mide|tama[ñn]o/i.test(text);
+    /medid|ancho|alto|cuánto|cuanto|mide|tama[ñn]o|dimension|largo|profundidad/i.test(text);
   if (askingForMeasures) {
     const measureGuideUrl = await getGuideImageUrl("measure");
     if (measureGuideUrl) outgoingImages.push(measureGuideUrl);
@@ -896,9 +901,10 @@ export async function processAgentTurn(
   let finalCleanup = cleanAssistantText(text);
   
   // Limpiar cualquier link markdown [texto](url) o http crudo que el modelo haya alucinado
+  // PERO permitir el link del catálogo oficial
   finalCleanup = finalCleanup
     .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1") // Remueve Markdown link dejando solo el texto
-    .replace(/https?:\/\/[^\s]+/g, "");       // Remueve raw URLs
+    .replace(/https?:\/\/(?!pixelart\.vercel\.app)[^\s]+/g, ""); // Remueve raw URLs excepto catálogo
 
   const messages = finalCleanup
     .split(/\s*---\s*/)
@@ -914,5 +920,6 @@ export async function processAgentTurn(
     documents: pdfUrl ? [pdfUrl] : [],
     newStage: "STAY",
     requiresHumanReview: false,
+    rawText: text, // Incluimos el texto original con comandos para la simulación
   };
 }

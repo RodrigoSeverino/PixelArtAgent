@@ -322,6 +322,12 @@ const scenarios: TestScenario[] = [
       const hasImageBank = rawOutputs.some((r) =>
         /\[\[SET_PRINT:\s*IMAGE_BANK/i.test(r)
       );
+      const hasCatalogLink = rawOutputs.some((r) =>
+        /pixelart\.vercel\.app\/catalog/i.test(r)
+      );
+      const hasRecreatedWarning = rawOutputs.some((r) =>
+        /recreada tal cual/i.test(r)
+      );
 
       if (!hasImageBank) {
         return {
@@ -329,11 +335,48 @@ const scenarios: TestScenario[] = [
           reason: "El bot no emitió [[SET_PRINT:IMAGE_BANK]] a pesar de que el cliente pidió ver el catálogo.",
         };
       }
+      if (!hasCatalogLink) {
+        return {
+          passed: false,
+          reason: "El bot no envió el link al catálogo (/catalog).",
+        };
+      }
+      if (!hasRecreatedWarning) {
+        return {
+          passed: false,
+          reason: "El bot no advirtió que la imagen será recreada tal cual.",
+        };
+      }
 
       return {
         passed: true,
-        reason: "Se detectó correctamente la intención de usar el banco de imágenes.",
+        reason: "Se detectó correctamente la intención, se envió el link y la advertencia de recreación.",
       };
+    },
+  },
+  {
+    name: "READY_FILE PATH — Request File",
+    description:
+      "Cliente dice que tiene el archivo. El bot DEBE pedirlo.",
+    userProxyPersonality:
+      "Querés plotear una pared de 2x2. Ya tenés el archivo del logo de tu empresa listo para imprimir. Cuando te pregunten por el diseño, decí: 'ya tengo el archivo listo'. No lo envíes de una, esperá a que te lo pidan.",
+    initialContext: freshContext(),
+    validate: (conversation, rawOutputs) => {
+      const hasReadyFile = rawOutputs.some((r) =>
+        /\[\[SET_PRINT:\s*READY_FILE/i.test(r)
+      );
+      const askedForFile = rawOutputs.some((r) =>
+        /pasame|envia|mandame|archivo|pdf|png|logo|diseño/i.test(r)
+      );
+
+      if (!hasReadyFile) {
+        return { passed: false, reason: "No se detectó [[SET_PRINT:READY_FILE]]" };
+      }
+      if (!askedForFile) {
+        return { passed: false, reason: "El bot no pidió explícitamente el archivo al usuario" };
+      }
+
+      return { passed: true, reason: "Intención detectada y archivo solicitado correctamente." };
     },
   },
 ];
@@ -370,12 +413,13 @@ async function runScenario(scenario: TestScenario): Promise<{
     // Turno del agente
     const { agentReply, rawOutput, updatedContext } = await simulateAgentTurn(
       context,
-      conversation.slice(0, -1), // Sin el último mensaje que ya está en historyForAI
+      conversation.slice(0, -1),
       userMessage
     );
 
     context = updatedContext;
     rawAgentOutputs.push(rawOutput);
+    conversation.push({ role: "assistant", content: agentReply });
 
     console.log(`🤖 AGENTE: ${agentReply}`);
     if (rawOutput !== agentReply) {

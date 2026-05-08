@@ -44,11 +44,11 @@ export async function calculateQuote(params: CalculateQuoteParams) {
 
   // Fallback defaults in UYU
   const FALLBACK_PRICES: Record<SurfaceType, PricingRow> = {
-    WALL:    { surface_type: "WALL",    price_per_sqm: 2500, installation_cost_fixed: 3500, design_cost: 1800, image_bank_cost: 600, currency: "UYU" },
-    WOOD:    { surface_type: "WOOD",    price_per_sqm: 3000, installation_cost_fixed: 3500, design_cost: 1800, image_bank_cost: 600, currency: "UYU" },
-    GLASS:   { surface_type: "GLASS",   price_per_sqm: 2800, installation_cost_fixed: 3500, design_cost: 1800, image_bank_cost: 600, currency: "UYU" },
-    FRIDGE:  { surface_type: "FRIDGE",  price_per_sqm: 3200, installation_cost_fixed: 4000, design_cost: 1800, image_bank_cost: 600, currency: "UYU" },
-    VEHICLE: { surface_type: "VEHICLE", price_per_sqm: 4500, installation_cost_fixed: 5500, design_cost: 2200, image_bank_cost: 900, currency: "UYU" },
+    WALL:    { surface_type: "WALL",    price_per_sqm: 2500, installation_cost_fixed: 3500, design_cost: 1500, image_bank_cost: 600, currency: "UYU" },
+    WOOD:    { surface_type: "WOOD",    price_per_sqm: 3000, installation_cost_fixed: 3500, design_cost: 1500, image_bank_cost: 600, currency: "UYU" },
+    GLASS:   { surface_type: "GLASS",   price_per_sqm: 2800, installation_cost_fixed: 3500, design_cost: 1500, image_bank_cost: 600, currency: "UYU" },
+    FRIDGE:  { surface_type: "FRIDGE",  price_per_sqm: 3200, installation_cost_fixed: 4000, design_cost: 1500, image_bank_cost: 600, currency: "UYU" },
+    VEHICLE: { surface_type: "VEHICLE", price_per_sqm: 4500, installation_cost_fixed: 5500, design_cost: 1500, image_bank_cost: 900, currency: "UYU" },
   };
 
   const p = pricing ?? FALLBACK_PRICES[params.surfaceType];
@@ -61,7 +61,7 @@ export async function calculateQuote(params: CalculateQuoteParams) {
     estimatedExtraPrice = p.image_bank_cost;
   }
   if (params.printFileScenario === "CUSTOM_DESIGN") {
-    estimatedExtraPrice = 1500;
+    estimatedExtraPrice = p.design_cost;
   }
 
   const requiresHumanReview =

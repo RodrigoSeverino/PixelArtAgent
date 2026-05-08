@@ -100,10 +100,13 @@ export interface AgentResponse {
   documents: string[];
 
   /** Nueva etapa del lead después de esta interacción */
-  newStage: LeadStage | "STAY";
+  newStage: LeadStage | "STAY" | "BLOCKED";
 
   /** Si el caso requiere revisión humana */
   requiresHumanReview: boolean;
+
+  /** Texto original sin limpiar (para simulaciones) */
+  rawText?: string;
 }
 
 /* ============================================

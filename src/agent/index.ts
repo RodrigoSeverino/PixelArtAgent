@@ -1,6 +1,7 @@
 import { generateText } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { supabase } from "@/lib/supabase";
+import { redis } from "@/lib/redis";
 import { getConversationHistory } from "@/lib/redis";
 import { generateQuotePDF } from "@/lib/pdf";
 import { uploadAsset } from "@/lib/storage";
@@ -700,21 +701,33 @@ export async function processAgentTurn(
     text = commandText + "¡Perfecto! Podés ver nuestro catálogo completo de imágenes acá: https://pixel-art-agent.vercel.app/catalog\n\nCuando elijas una, avisame cuál te gustó. Tené en cuenta que la imagen va a ser recreada tal cual está en el banco de imágenes. Esto ya incluye una tarifa fija de diseño.";
   }
 
-  // Enviar surface_guide SOLO si el agente está pidiendo la superficie y NO la tenemos
+  // Enviar surface_guide SOLO si el agente está pidiendo la superficie, NO la tenemos,
+  // Y no fue enviada antes en esta sesión
   const askingForSurface = !localSurfaceType && /superficie|pared|madera|vidrio|heladera|veh[íi]culo|donde|dónde/i.test(text);
-  if (askingForSurface && !context.surfaceType) {
+  if (askingForSurface && !context.surfaceType && !context.surfaceGuideSent) {
     const surfaceGuideUrl = await getGuideImageUrl("surface");
-    if (surfaceGuideUrl) outgoingImages.push(surfaceGuideUrl);
+    if (surfaceGuideUrl) {
+      outgoingImages.push(surfaceGuideUrl);
+      context.surfaceGuideSent = true;
+      // Marcar en Redis para persistir el flag en la sesión
+      await redis.set(`guide:surface:${leadId}`, "1", { ex: 90 * 60 });
+    }
   }
 
   // Enviar measure_guide cuando el agente pide medidas (hay superficie pero aún no hay medidas)
+  // Y no fue enviada antes en esta sesión
   const askingForMeasures =
     Boolean(localSurfaceType) &&
     !localM2 &&
     /medid|ancho|alto|cuánto|cuanto|mide|tama[ñn]o|dimension|largo|profundidad/i.test(text);
-  if (askingForMeasures && !context.measurements) {
+  if (askingForMeasures && !context.measurements && !context.measureGuideSent) {
     const measureGuideUrl = await getGuideImageUrl("measure");
-    if (measureGuideUrl) outgoingImages.push(measureGuideUrl);
+    if (measureGuideUrl) {
+      outgoingImages.push(measureGuideUrl);
+      context.measureGuideSent = true;
+      // Marcar en Redis para persistir el flag en la sesión
+      await redis.set(`guide:measure:${leadId}`, "1", { ex: 90 * 60 });
+    }
   }
 
   if (needsQuote) {
@@ -815,25 +828,26 @@ export async function processAgentTurn(
 
       // IMPORTANTE: reemplazamos toda la respuesta del modelo por una salida limpia
       let textBreakdown = "";
-      if (quoteCalc.requiresHumanReview) {
+      if (localScenario === "CUSTOM_DESIGN") {
+        // Diseño personalizado: sin precio, el equipo de arte evalúa
         textBreakdown = 
-          `¡Perfecto! Aquí tenés tu presupuesto oficial preliminar. Te lo envío también como PDF para que lo puedas guardar.\n\n` +
-          `Dado el tamaño o las características del trabajo, este pedido requiere validación final por parte de nuestro equipo técnico, quienes confirmarán la viabilidad y el costo exacto${localInstall ? ' de instalación' : ''}.\n\n` +
-          `Si querés, podemos seguir por este mismo chat para dejar asentado el diseño elegido y los próximos pasos.`;
-      } else if (localScenario === "CUSTOM_DESIGN") {
+          `Tu pedido fue registrado. Te enviamos la información del mismo en un PDF.\n\n` +
+          `El diseño personalizado será evaluado por nuestro equipo de arte, quienes analizarán la viabilidad y te enviarán la cotización acorde a lo que buscás.\n\n` +
+          `Alguien del equipo de arte se contactará a la brevedad por este mismo chat para avanzar.`;
+      } else if (quoteCalc.requiresHumanReview) {
         textBreakdown = 
-          `¡Perfecto! Aquí tenés tu presupuesto parcial. Te lo envío también como PDF para que lo puedas guardar.\n\n` +
-          `El total parcial de tu pedido (impresión y ${localInstall ? 'colocación' : 'retiro'}) es de **$${total.toLocaleString("es-UY")} ${quoteCalc.currency}** sin contemplar el costo de diseño.\n\n` +
-          `Alguien de nuestro equipo de arte se va a estar contactando a la brevedad para ver el diseño acorde a lo que buscás y pasarte la cotización final de esa parte.`;
+          `Aquí tenés tu presupuesto estimado. Te lo envío también como PDF para que lo puedas guardar.\n\n` +
+          `Dado el tamaño o las características del trabajo, nuestro equipo técnico revisará la viabilidad y confirmará el costo exacto${localInstall ? ' de instalación' : ''} antes de avanzar.\n\n` +
+          `Alguien del equipo se contactará a la brevedad por este mismo chat.`;
       } else if (localScenario === "READY_FILE") {
         textBreakdown = 
-          `¡Perfecto! Aquí tenés tu presupuesto estimado. Te lo envío también como PDF para que lo puedas guardar.\n\n` +
+          `Aquí tenés tu presupuesto estimado. Te lo envío también como PDF para que lo puedas guardar.\n\n` +
           `El total de tu pedido ${localInstall ? 'con instalación incluida' : 'retirando por el local'} es de **$${total.toLocaleString("es-UY")} ${quoteCalc.currency}**.\n\n` +
-          `*Aclaración importante: Alguien de nuestro equipo se contactará a la brevedad para analizar la resolución y calidad de la foto o archivo que nos enviaste, y así confirmar que es apto para imprimir en ese tamaño.*\n\n` +
+          `Alguien de nuestro equipo se contactará para analizar la resolución del archivo que nos enviaste y confirmar que es apto para imprimir en ese tamaño.\n\n` +
           `¿Te parece bien para avanzar?`;
       } else {
         textBreakdown = 
-          `¡Perfecto! Aquí tenés tu presupuesto oficial. Te lo envío también como PDF para que lo puedas guardar.\n\n` +
+          `Aquí tenés tu presupuesto estimado. Te lo envío también como PDF para que lo puedas guardar.\n\n` +
           `El total de tu pedido ${localInstall ? 'con instalación incluida' : 'retirando por el local'} es de **$${total.toLocaleString("es-UY")} ${quoteCalc.currency}**.\n\n` +
           `¿Te parece bien para avanzar con el pago y comenzar con el diseño?`;
       }
@@ -916,10 +930,10 @@ export async function processAgentTurn(
   let finalCleanup = cleanAssistantText(text);
   
   // Limpiar cualquier link markdown [texto](url) o http crudo que el modelo haya alucinado
-  // PERO permitir el link del catálogo oficial
+  // PERO permitir el link del catálogo oficial (pixel-art-agent.vercel.app)
   finalCleanup = finalCleanup
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1") // Remueve Markdown link dejando solo el texto
-    .replace(/https?:\/\/(?!pixelart\.vercel\.app)[^\s]+/g, ""); // Remueve raw URLs excepto catálogo
+    .replace(/\[([^\]]+)\]\((?!https?:\/\/pixel-art-agent\.vercel\.app)[^)]+\)/g, "$1") // Remueve Markdown links excepto catálogo
+    .replace(/https?:\/\/(?!pixel-art-agent\.vercel\.app)[^\s]+/g, ""); // Remueve raw URLs excepto catálogo
 
   const messages = finalCleanup
     .split(/\s*---\s*/)

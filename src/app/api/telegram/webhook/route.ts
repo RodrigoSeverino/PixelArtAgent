@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+
+export const dynamic = "force-dynamic";
 import { supabase } from "@/lib/supabase";
 import { buildLeadRecord } from "@/lib/lead";
 import { processAgentTurn } from "@/agent/index";
@@ -54,12 +56,7 @@ function isNewOrderIntent(text: string): boolean {
  * Recibe mensajes de Telegram, delega el procesamiento al agente
  * basado en Vercel AI SDK, y devuelve la respuesta.
  */
-export async function GET() {
-  return NextResponse.json({ 
-    status: "active", 
-    message: "Webhook is active and listening for POST requests from Telegram." 
-  });
-}
+
 
 export async function POST(request: Request) {
   try {
@@ -409,6 +406,8 @@ async function buildLeadContext(
     installationRequired: null,
     orderNumber: null,
     address: null,
+    surfaceGuideSent: false,
+    measureGuideSent: false,
   };
 
   try {
@@ -474,6 +473,13 @@ async function buildLeadContext(
         context.installationRequired = quote.installation_required;
       }
     }
+    // Traer flags de imágenes de guía desde Redis
+    const [surfaceFlag, measureFlag] = await Promise.all([
+      redis.get(`guide:surface:${leadId}`),
+      redis.get(`guide:measure:${leadId}`),
+    ]);
+    context.surfaceGuideSent = surfaceFlag === "1";
+    context.measureGuideSent = measureFlag === "1";
   } catch (err) {
     console.error("⚠️ [WARNING] Error al construir el contexto:", err);
   }

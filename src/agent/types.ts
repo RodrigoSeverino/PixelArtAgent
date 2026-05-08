@@ -61,6 +61,12 @@ export interface LeadContext {
 
   /** Dirección de instalación */
   address: string | null;
+
+  /** Si ya se envió la imagen guía de superficie en esta sesión */
+  surfaceGuideSent: boolean;
+
+  /** Si ya se envió la imagen guía de medidas en esta sesión */
+  measureGuideSent: boolean;
 }
 
 /* ============================================

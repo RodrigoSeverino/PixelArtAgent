@@ -12,6 +12,7 @@ export interface QuotePDFParams {
   estimatedTotal: number;
   currency: string;
   printFileScenario: string;
+  orderNumber?: number;
 }
 
 /**
@@ -69,16 +70,27 @@ export async function generateQuotePDF(
       .fillColor("#FFFFFF")
       .fontSize(11)
       .font("Helvetica-Bold")
-      .text("PRESUPUESTO OFICIAL", W - MARGIN - 160, 22, {
+      .text("PRESUPUESTO ESTIMADO", W - MARGIN - 160, 22, {
         width: 160,
         align: "right",
       });
+
+    if (params.orderNumber) {
+      doc
+        .fillColor(ACCENT)
+        .fontSize(10)
+        .font("Helvetica-Bold")
+        .text(`ORDEN #${params.orderNumber}`, W - MARGIN - 160, 36, {
+          width: 160,
+          align: "right",
+        });
+    }
 
     doc
       .fillColor(ACCENT)
       .fontSize(9)
       .font("Helvetica")
-      .text(date, W - MARGIN - 160, 42, { width: 160, align: "right" });
+      .text(date, W - MARGIN - 160, params.orderNumber ? 50 : 42, { width: 160, align: "right" });
 
     doc
       .fillColor("#AAAACC")
@@ -186,14 +198,19 @@ export async function generateQuotePDF(
       .font("Helvetica")
       .text("TOTAL ESTIMADO", MARGIN + 16, y + 16);
 
+    const isCustomDesign = params.printFileScenario === "CUSTOM_DESIGN";
+    const totalDisplay = isCustomDesign
+      ? "A CONFIRMAR"
+      : `$${params.estimatedTotal.toLocaleString("es-UY")} ${params.currency}`;
+
     doc
       .fillColor(ACCENT)
-      .fontSize(22)
+      .fontSize(isCustomDesign ? 16 : 22)
       .font("Helvetica-Bold")
       .text(
-        `$${params.estimatedTotal.toLocaleString("es-UY")} ${params.currency}`,
+        totalDisplay,
         MARGIN,
-        y + 14,
+        y + (isCustomDesign ? 18 : 14),
         { width: CONTENT_W - 16, align: "right" }
       );
 
@@ -205,13 +222,26 @@ export async function generateQuotePDF(
       .fontSize(8)
       .font("Helvetica")
       .text(
-        "* Presupuesto estimado. Los precios finales pueden variar según condiciones de instalación y diseño definitivo.",
+        "* Este presupuesto es orientativo y preliminar. Nuestro equipo técnico revisará la viabilidad del trabajo antes de confirmar el precio final.",
         MARGIN,
         y,
         { width: CONTENT_W }
       );
 
     y += 14;
+
+    if (params.printFileScenario === "CUSTOM_DESIGN") {
+      doc
+        .fillColor(MUTED)
+        .fontSize(8)
+        .text(
+          "* El costo de diseño personalizado será evaluado por nuestro equipo de arte y cotizado por separado.",
+          MARGIN,
+          y,
+          { width: CONTENT_W }
+        );
+      y += 14;
+    }
 
     if (params.estimatedInstallPrice > 0) {
       doc

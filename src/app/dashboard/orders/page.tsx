@@ -66,11 +66,12 @@ export default function OrdersPage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [activeFilter, setActiveFilter] = useState<"pending" | "all" | "closed">("pending");
 
   const fetchOrders = async () => {
     setLoading(true);
-    let query = supabase.from("b2c_leads").select("*").neq("current_stage", "CLOSED_LOST");
-    
+    let query = supabase.from("b2c_leads").select("*");
+    // Traemos TODOS los leads y filtramos en el cliente para poder cambiar tabs sin re-fetch
     const { data: leadsData, error: leadsError } = await query.order("created_at", { ascending: false });
 
     if (leadsError || !leadsData) {
@@ -112,6 +113,18 @@ export default function OrdersPage() {
     setOrders(enrichedOrders);
     setLoading(false);
   };
+
+  // Filtrado client-side según el tab activo
+  const CLOSED_STAGES = ["CLOSED_WON", "CLOSED_LOST"];
+  const PENDING_STAGES = ["QUOTE_GENERATED", "QUOTE_READY", "REQUIRES_HUMAN_REVIEW", "HUMAN_HANDOFF"];
+
+  const filteredOrders = orders.filter((o) => {
+    if (activeFilter === "closed") return CLOSED_STAGES.includes(o.current_stage);
+    if (activeFilter === "pending") return !CLOSED_STAGES.includes(o.current_stage);
+    return true; // "all"
+  });
+
+  const pendingCount = orders.filter((o) => PENDING_STAGES.includes(o.current_stage)).length;
 
   useEffect(() => {
     fetchOrders();
@@ -166,10 +179,48 @@ export default function OrdersPage() {
           <h2 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-400">
             Listado de Pedidos
           </h2>
-          <p className="text-muted-foreground mt-1 text-sm">Gestiona y monitorea los leads de PixelArt en tiempo real.</p>
+          <p className="text-muted-foreground mt-1 text-sm">Gestioná y monitoré los leads de PixelArt en tiempo real.</p>
         </div>
         <div className="flex items-center gap-4">
-          <button 
+          {/* Filtros / Tabs */}
+          <div className="flex items-center gap-1 bg-white/5 border border-white/10 rounded-xl p-1">
+            <button
+              onClick={() => setActiveFilter("pending")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                activeFilter === "pending"
+                  ? "bg-amber-500 text-black shadow"
+                  : "text-gray-400 hover:text-white"
+              }`}
+            >
+              Activos
+              {pendingCount > 0 && (
+                <span className="ml-1.5 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full animate-pulse">
+                  {pendingCount}
+                </span>
+              )}
+            </button>
+            <button
+              onClick={() => setActiveFilter("all")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                activeFilter === "all"
+                  ? "bg-white/20 text-white shadow"
+                  : "text-gray-400 hover:text-white"
+              }`}
+            >
+              Todos
+            </button>
+            <button
+              onClick={() => setActiveFilter("closed")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                activeFilter === "closed"
+                  ? "bg-green-700 text-white shadow"
+                  : "text-gray-400 hover:text-white"
+              }`}
+            >
+              Cerrados
+            </button>
+          </div>
+          <button
             onClick={fetchOrders}
             className="p-2 hover:bg-white/5 rounded-lg border border-white/10 transition-colors"
             title="Refrescar"
@@ -203,15 +254,22 @@ export default function OrdersPage() {
                     </div>
                   </td>
                 </tr>
-              ) : orders.length === 0 ? (
+              ) : filteredOrders.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="px-6 py-20 text-center text-muted-foreground italic">
-                    No hay pedidos registrados en la base de datos.
+                    No hay pedidos en esta categoría.
                   </td>
                 </tr>
               ) : (
-                orders.map((order) => (
-                  <tr key={order.id} className="group hover:bg-white/[0.02] transition-colors">
+                filteredOrders.map((order) => (
+                  <tr
+                    key={order.id}
+                    className={`group transition-colors ${
+                      order.current_stage === "QUOTE_GENERATED"
+                        ? "bg-amber-900/10 hover:bg-amber-900/20 border-l-2 border-amber-500"
+                        : "hover:bg-white/[0.02]"
+                    }`}
+                  >
                     {/* Cliente */}
                     <td className="px-6 py-4">
                       <div className="flex flex-col">

@@ -4,7 +4,15 @@ import { Redis } from "@upstash/redis";
  * Upstash Redis client — inicializado con variables de entorno.
  * Usa el REST transport de Upstash, compatible con Edge Runtime y Vercel Serverless.
  */
-export const redis = Redis.fromEnv();
+let redisClient: Redis | null = null;
+
+try {
+  redisClient = Redis.fromEnv();
+} catch (e) {
+  console.warn("⚠️ [REDIS] No se pudo inicializar Redis desde el entorno (probablemente en build time)");
+}
+
+export const redis = redisClient as Redis;
 
 // TTL de la sesión en segundos (90 minutos)
 const SESSION_TTL_SECONDS = 90 * 60;

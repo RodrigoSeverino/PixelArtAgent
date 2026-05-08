@@ -109,43 +109,20 @@ export async function POST(request: Request) {
     let currentStage: LeadStage;
     let phone: string | null = null;
 
-    const COMPLETED_STAGES: string[] = ["CLOSED_WON", "CLOSED_LOST", "QUOTE_GENERATED"];
+    // Solo los leads TERMINALES permiten crear un lead nuevo.
+    // Cualquier otro estado (activo, cotizado, bloqueado) = lead ABIERTO, continuar siempre.
+    const TERMINAL_STAGES: string[] = ["CLOSED_WON", "CLOSED_LOST"];
 
-    if (existingLead && COMPLETED_STAGES.includes(existingLead.current_stage)) {
-      // ── Cliente recurrente con pedido previo (cerrado o cotizado) ──────────
+    if (existingLead && TERMINAL_STAGES.includes(existingLead.current_stage)) {
       const isFollowUp = isPreviousOrderReference(text);
-      const isNewIntent = hasPhoto || hasDocument || isNewOrderIntent(text);
-      
-      // SI el lead está CERRADO (WON/LOST), somos mucho más estrictos:
-      const isTerminal = existingLead.current_stage === "CLOSED_WON" || existingLead.current_stage === "CLOSED_LOST";
-      
-      // Si es terminal, creamos nuevo si NO es un seguimiento explícito.
-      // Si es solo QUOTE_GENERATED, NO creamos nuevo a menos que pida explícitamente "otro" o "nuevo".
-      let shouldCreateNew = false;
-      if (isTerminal) {
-        shouldCreateNew = !isFollowUp;
+
+      if (isFollowUp) {
+        console.log(`📦 [FOLLOW-UP] Lead ${existingLead.id} en ${existingLead.current_stage}. Respondiendo seguimiento.`);
+        leadId = existingLead.id;
+        currentStage = existingLead.current_stage as LeadStage;
+        phone = existingLead.phone;
       } else {
-        // En QUOTE_GENERATED
-        // Si manda una foto/documento o dice explícitamente "otro" o "nuevo", asumimos nueva intención
-        shouldCreateNew = (hasPhoto || hasDocument) || (isNewOrderIntent(text) && (text.includes("otro") || text.includes("nuevo")));
-      }
-
-      if (shouldCreateNew) {
-        console.log(`🆕 [NEW ORDER] Lead previo ${existingLead.id} en estado ${existingLead.current_stage}. Creando nuevo.`);
-        
-        // 1. Solo "cerramos" el anterior si NO era terminal (ej. estaba en QUOTE_GENERATED pero abandona para empezar otro)
-        if (!isTerminal) {
-          await supabase
-            .from("b2c_leads")
-            .update({ 
-              current_stage: "CLOSED_LOST", 
-              observation: "Cerrado automáticamente por inicio de nuevo pedido/consulta." 
-            })
-            .eq("id", existingLead.id);
-        }
-
-        // 2. Crear el nuevo lead
-
+        console.log(`🆕 [NEW ORDER] Lead previo ${existingLead.id} estaba ${existingLead.current_stage}. Creando nuevo.`);
         const newLead = buildLeadRecord({
           fullName: fromName || null,
           channel: "TELEGRAM",
@@ -159,17 +136,11 @@ export async function POST(request: Request) {
         }
         leadId = newLead.id;
         currentStage = "INITIAL_CONTACT";
-        
-        // Limpiamos historial previo en Redis para que el agente empiece de cero
         await redis.del(`chat:${leadId}:history`);
-      } else {
-        // Pregunta sobre pedido previo → usar lead existente
-        console.log(`📦 [FOLLOW-UP] Lead ${existingLead.id} en ${existingLead.current_stage}. Continuando con el mismo lead.`);
-        leadId = existingLead.id;
-        currentStage = existingLead.current_stage as LeadStage;
-        phone = existingLead.phone;
       }
     } else if (existingLead) {
+      // Lead activo en cualquier estado no-terminal → siempre continuar
+      console.log(`✅ [ACTIVE LEAD] Continuando lead ${existingLead.id} en ${existingLead.current_stage}.`);
       leadId = existingLead.id;
       currentStage = existingLead.current_stage as LeadStage;
       phone = existingLead.phone;

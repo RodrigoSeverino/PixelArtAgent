@@ -121,6 +121,11 @@ async function simulateAgentTurn(
     updatedContext.printFileScenario = printMatch[1];
   }
 
+  const installMatch = rawOutput.match(/\[\[SET_INSTALL:\s*(true|false)\s*\]\]/i);
+  if (installMatch) {
+    updatedContext.installationRequired = installMatch[1].toLowerCase() === "true";
+  }
+
   // Limpiar texto para el display
   const cleanText = rawOutput
     .replace(/\[\[.*?\]\]/g, "")
@@ -267,7 +272,7 @@ const scenarios: TestScenario[] = [
     description:
       "Cliente vago con las medidas. El bot debe insistir profesionalmente.",
     userProxyPersonality:
-      "Querés plotear una pared que está en buen estado, limpia y lisa. Pero sos muy vago con las medidas: decís cosas como 'es grande', 'no sé bien', 'más o menos como una puerta'. NUNCA des un número exacto. Querés un diseño personalizado si te preguntan.",
+      "Querés plotear una pared que está en buen estado, limpia y lisa. Aclará expresamente que 'no podés mandar foto de la pared, no tenés'. Pero sos muy vago con las medidas: decís cosas como 'es grande', 'no sé bien', 'más o menos como una puerta'. NUNCA des un número exacto. Querés un diseño personalizado si te preguntan.",
     initialContext: freshContext(),
     validate: (conversation, rawOutputs) => {
       // Contar cuántas veces el agente pidió medidas
@@ -311,7 +316,7 @@ const scenarios: TestScenario[] = [
     description:
       "Cliente que quiere ver opciones del catálogo/banco de imágenes de Pixel Art.",
     userProxyPersonality:
-      "Empieza saludando y diciendo que querés plotear la heladera. No des las medidas hasta que te pregunten. Luego decís que mide 1.80 x 0.60. Finalmente, cuando te pregunten por el diseño, decís explícitamente: 'quiero ver el catálogo o galería de imágenes que tienen'. No cambies de decisión.",
+      "Empieza saludando y diciendo que querés plotear la heladera. Cuando te pidan foto de la heladera, decí claro y explícito 'no tengo foto, no puedo enviarla'. Las medidas son 1.80 de alto por 0.60 de ancho. Cuando te pregunten por el diseño, decís explícitamente: 'quiero ver el catálogo o galería de imágenes que tienen'. No cambies de decisión.",
     initialContext: freshContext(),
     validate: (conversation, rawOutputs) => {
       const hasImageBank = rawOutputs.some((r) =>

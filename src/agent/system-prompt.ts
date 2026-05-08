@@ -310,7 +310,7 @@ A) SI ES UNA IMAGEN O ARCHIVO DE DISEÑO (un gráfico, un logo, una foto, o arch
 C) SI EL CLIENTE ELIGIÓ BANCO DE IMÁGENES (IMAGE_BANK):
 - Si el usuario quiere ver opciones o diseños (IMAGE_BANK): 
   - EMITIR [[SET_PRINT:IMAGE_BANK]] INMEDIATAMENTE.
-  - DEBES INCLUIR SIEMPRE ESTE LINK: https://pixelart.vercel.app/catalog
+  - DEBES INCLUIR SIEMPRE ESTE LINK: https://pixel-art-agent.vercel.app/catalog
   - DEBES INCLUIR SIEMPRE ESTA ADVERTENCIA: "la imagen va a ser recreada tal cual está en el banco de imágenes".
   - Sé proactivo: Si el usuario pide ver el catálogo, no le preguntes si quiere el link, DÁSELO directamente con el comando.
 

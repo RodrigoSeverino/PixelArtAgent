@@ -129,11 +129,23 @@ export async function POST(request: Request) {
         shouldCreateNew = !isFollowUp;
       } else {
         // En QUOTE_GENERATED
-        shouldCreateNew = isNewOrderIntent(text) && (text.includes("otro") || text.includes("nuevo"));
+        // Si manda una foto/documento o dice explícitamente "otro" o "nuevo", asumimos nueva intención
+        shouldCreateNew = (hasPhoto || hasDocument) || (isNewOrderIntent(text) && (text.includes("otro") || text.includes("nuevo")));
       }
 
       if (shouldCreateNew) {
-        console.log(`🆕 [NEW ORDER] Lead previo ${existingLead.id} en estado ${existingLead.current_stage}. Creando nuevo lead.`);
+        console.log(`🆕 [NEW ORDER] Lead previo ${existingLead.id} en estado ${existingLead.current_stage}. Cerrando previo y creando nuevo.`);
+        
+        // 1. "Cerrar" el lead anterior para que no se use más
+        await supabase
+          .from("b2c_leads")
+          .update({ 
+            current_stage: "CLOSED_LOST", 
+            observation: "Cerrado automáticamente por inicio de nuevo pedido/consulta." 
+          })
+          .eq("id", existingLead.id);
+
+        // 2. Crear el nuevo lead
         const newLead = buildLeadRecord({
           fullName: fromName || null,
           channel: "TELEGRAM",

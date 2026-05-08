@@ -101,6 +101,7 @@ export async function sendDocument(
 
 /**
  * Sends a photo (by URL) to a Telegram chat.
+ * We fetch the image first and send it as a file to avoid "wrong type of the web page content" errors.
  */
 export async function sendPhoto(
   chatId: number | string,
@@ -108,15 +109,28 @@ export async function sendPhoto(
   caption?: string
 ): Promise<boolean> {
   try {
+    // 1. Fetch the image to ensure it's a valid file and get its buffer
+    const imageRes = await fetch(photoUrl);
+    if (!imageRes.ok) {
+      console.error(`❌ [TELEGRAM] Could not fetch image from URL: ${photoUrl} (Status: ${imageRes.status})`);
+      return false;
+    }
+
+    const arrayBuffer = await imageRes.arrayBuffer();
+    const blob = new Blob([arrayBuffer], { type: imageRes.headers.get("content-type") || "image/jpeg" });
+
+    // 2. Prepare multipart/form-data
+    const formData = new FormData();
+    formData.append("chat_id", String(chatId));
+    formData.append("photo", blob, "photo.jpg");
+    if (caption) {
+      formData.append("caption", caption);
+      formData.append("parse_mode", "Markdown");
+    }
+
     const response = await fetch(`${getApiBase()}/sendPhoto`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        chat_id: chatId,
-        photo: photoUrl,
-        caption,
-        parse_mode: "Markdown",
-      }),
+      body: formData,
     });
 
     const result = await response.json();
@@ -129,6 +143,7 @@ export async function sendPhoto(
     return false;
   }
 }
+
 
 /**
  * Gets the download URL for a Telegram file by file_id.

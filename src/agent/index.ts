@@ -685,7 +685,7 @@ export async function processAgentTurn(
     const commandText = commands.length > 0 ? commands.join(" ") + " " : "";
 
     // Inyectamos un mensaje fijo para derivar al catálogo web
-    text = commandText + "¡Perfecto! Podés ver nuestro catálogo completo de imágenes acá: https://pixelart.vercel.app/catalog\n\nCuando elijas una, avisame cuál te gustó. Tené en cuenta que la imagen va a ser recreada tal cual está en el banco de imágenes. Esto ya incluye una tarifa fija de diseño.";
+    text = commandText + "¡Perfecto! Podés ver nuestro catálogo completo de imágenes acá: https://pixel-art-agent.vercel.app/catalog\n\nCuando elijas una, avisame cuál te gustó. Tené en cuenta que la imagen va a ser recreada tal cual está en el banco de imágenes. Esto ya incluye una tarifa fija de diseño.";
   }
 
   // Enviar surface_guide cuando el agente acaba de detectar la superficie por primera vez

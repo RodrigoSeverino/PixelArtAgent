@@ -22,33 +22,46 @@ interface Customer {
 export default function CustomersPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
-  useEffect(() => {
-    async function fetchCustomers() {
-      const { data, error } = await supabase
-        .from("b2c_customers")
-        .select("*")
-        .order("last_purchase_at", { ascending: false });
+  const fetchCustomers = async () => {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from("b2c_customers")
+      .select("*")
+      .order("last_purchase_at", { ascending: false });
 
-      if (error) {
-        console.error("Error fetching customers:", error);
-      } else {
-        const { data: leadsData } = await supabase
-          .from("b2c_leads")
-          .select("telegram_chat_id, payment_status")
-          .order("created_at", { ascending: false });
+    if (error) {
+      console.error("Error fetching customers:", error);
+    } else {
+      const { data: leadsData } = await supabase
+        .from("b2c_leads")
+        .select("telegram_chat_id, payment_status")
+        .order("created_at", { ascending: false });
 
-        const enriched = data?.map((c) => {
-          const lead = leadsData?.find((l) => l.telegram_chat_id === c.telegram_chat_id);
-          return { ...c, payment_status: lead?.payment_status || "PENDING" };
-        });
-        setCustomers(enriched || []);
-      }
-      setLoading(false);
+      const enriched = data?.map((c) => {
+        const lead = leadsData?.find((l) => l.telegram_chat_id === c.telegram_chat_id);
+        return { ...c, payment_status: lead?.payment_status || "PENDING" };
+      });
+      setCustomers(enriched || []);
     }
-
+    setLoading(false);
+  };
+  useEffect(() => {
     fetchCustomers();
   }, []);
+
+  const deleteCustomer = async (id: string) => {
+    const { error } = await supabase.from("b2c_customers").delete().eq("id", id);
+    
+    if (error) {
+      console.error("Error deleting customer:", error);
+      alert("Error al eliminar el cliente de la base de datos.");
+    } else {
+      setConfirmDeleteId(null);
+      fetchCustomers();
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -74,6 +87,7 @@ export default function CustomersPage() {
                   <th className="px-4 py-3 font-medium">Dirección</th>
                   <th className="px-4 py-3 font-medium">Estado de Pago</th>
                   <th className="px-4 py-3 font-medium">Fecha de Compra</th>
+                  <th className="px-4 py-3 font-medium text-right">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
@@ -104,6 +118,35 @@ export default function CustomersPage() {
                       {customer.last_purchase_at
                         ? format(new Date(customer.last_purchase_at), "PPP", { locale: es })
                         : "-"}
+                    </td>
+                    <td className="px-4 py-4 text-right">
+                      <div className="flex justify-end gap-2">
+                        {confirmDeleteId === customer.id ? (
+                          <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/20 p-1 rounded-lg animate-in fade-in slide-in-from-right-2 duration-200">
+                            <span className="text-[10px] font-bold text-red-400 px-2">¿Borrar?</span>
+                            <button
+                              onClick={() => deleteCustomer(customer.id)}
+                              className="px-2 py-1 bg-red-500 text-white rounded text-[10px] font-bold hover:bg-red-600 transition-colors"
+                            >
+                              SÍ
+                            </button>
+                            <button
+                              onClick={() => setConfirmDeleteId(null)}
+                              className="px-2 py-1 bg-zinc-800 text-gray-400 rounded text-[10px] font-bold hover:bg-zinc-700 transition-colors"
+                            >
+                              NO
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => setConfirmDeleteId(customer.id)}
+                            className="p-1.5 hover:bg-red-500/10 rounded text-muted-foreground hover:text-red-500 transition-colors"
+                            title="Eliminar cliente permanentemente"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}

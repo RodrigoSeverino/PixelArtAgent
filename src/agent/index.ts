@@ -665,26 +665,13 @@ export async function processAgentTurn(
     context.currentStage === "CLOSED_LOST";
 
   // needsQuote dispara cuando:
-  // 1. El LLM emitió [[GENERATE_QUOTE]] explícitamente (siempre aplica)
-  // 2. El flujo está completo (auto-trigger) — SOLO si no hay cotización previa
-  // 3. El LLM alucina texto de cotización — SOLO si no hay cotización previa
-  // 4. El LLM "promete" enviar una cotización (ej: "te mando el presupuesto") — mismo turno
-  const llmPromisesQuote =
-    /(?:te|les?)\s+(?:mando|env[íi]o|preparo|genero|paso)\s+(?:el|la|un|una)\s+(?:presupuesto|cotizaci[oó]n|pdf)/i.test(text) ||
-    /(?:aqui|acá|ahora)\s+(?:te|les?)\s+(?:mando|env[íi]o|comparto)\s+(?:el|la)/i.test(text) ||
-    /\bvoy a (?:enviarte|mandarte|prepararte|generarte)\s+(?:el|la)\s+(?:presupuesto|cotizaci[oó]n)/i.test(text);
-
+  // 1. El LLM emitió [[GENERATE_QUOTE]] explícitamente — principal mecanismo
+  // 2. El flujo está completo (auto-trigger) — safety net si el LLM olvidó el comando
+  // NOTA: No se fuerza por detección de frases del LLM ("te mando el presupuesto", etc.)
+  // El LLM lee el historial completo de Redis y debe emitir [[GENERATE_QUOTE]] de forma natural.
   const needsQuote =
     text.includes("[[GENERATE_QUOTE]]") ||
-    (!quoteAlreadyDone && (
-      flowCompleteAutoTrigger ||
-      llmPromisesQuote ||
-      /presupuesto|costo|precio|monto|cotizaci[oó]n|\$[xX]\b|xxxx|monto generado/i.test(text)
-    ));
-
-  if (llmPromisesQuote && !quoteAlreadyDone) {
-    console.log(`🔔 [PROMISE-QUOTE] El LLM prometió enviar cotización en este turno. Forzando generación.`);
-  }
+    (!quoteAlreadyDone && flowCompleteAutoTrigger);
 
   if (flowCompleteAutoTrigger && !text.includes("[[GENERATE_QUOTE]]") && !quoteAlreadyDone) {
     console.log(`⚡ [AUTO-QUOTE] Todos los datos completos. Forzando generación de cotización.`, {

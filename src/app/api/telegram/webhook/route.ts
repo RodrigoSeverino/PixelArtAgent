@@ -179,18 +179,32 @@ export async function POST(request: Request) {
           photoUrl = url;
 
           if (photoUrl) {
-            const isSurfacePhoto = currentStage === "INITIAL_CONTACT" || currentStage === "SURFACE_SELECTED";
-            
+            // Consultar el escenario actual desde la BD para clasificar correctamente la foto
+            const { data: quoteRow } = await supabase
+              .from("b2c_quotes")
+              .select("print_file_scenario")
+              .eq("lead_id", leadId)
+              .limit(1)
+              .single();
+
+            const currentScenario = quoteRow?.print_file_scenario ?? null;
+
+            // Si el escenario ya es READY_FILE, la foto es el archivo de diseño
+            const isDesignFilePhoto = currentScenario === "READY_FILE";
+            const assetType = isDesignFilePhoto ? "DESIGN_FILE" : "SURFACE_PHOTO";
+
             // Guardar como asset
             await supabase.from("b2c_lead_assets").insert({
               lead_id: leadId,
-              asset_type: isSurfacePhoto ? "SURFACE_PHOTO" : "DESIGN_FILE",
+              asset_type: assetType,
               file_url: photoUrl,
               file_name: `photo_${Date.now()}.jpg`,
             });
 
-            if (isSurfacePhoto) {
-              // Actualizar assessment
+            console.log(`📸 [PHOTO] Guardada como ${assetType} para lead ${leadId}`);
+
+            if (!isDesignFilePhoto) {
+              // Solo actualizar el assessment si es foto de superficie
               await supabase
                 .from("b2c_surface_assessments")
                 .update({ photo_url: photoUrl, updated_at: new Date().toISOString() })

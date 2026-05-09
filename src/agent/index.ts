@@ -668,12 +668,23 @@ export async function processAgentTurn(
   // 1. El LLM emitió [[GENERATE_QUOTE]] explícitamente (siempre aplica)
   // 2. El flujo está completo (auto-trigger) — SOLO si no hay cotización previa
   // 3. El LLM alucina texto de cotización — SOLO si no hay cotización previa
+  // 4. El LLM "promete" enviar una cotización (ej: "te mando el presupuesto") — mismo turno
+  const llmPromisesQuote =
+    /(?:te|les?)\s+(?:mando|env[íi]o|preparo|genero|paso)\s+(?:el|la|un|una)\s+(?:presupuesto|cotizaci[oó]n|pdf)/i.test(text) ||
+    /(?:aqui|acá|ahora)\s+(?:te|les?)\s+(?:mando|env[íi]o|comparto)\s+(?:el|la)/i.test(text) ||
+    /\bvoy a (?:enviarte|mandarte|prepararte|generarte)\s+(?:el|la)\s+(?:presupuesto|cotizaci[oó]n)/i.test(text);
+
   const needsQuote =
     text.includes("[[GENERATE_QUOTE]]") ||
     (!quoteAlreadyDone && (
       flowCompleteAutoTrigger ||
+      llmPromisesQuote ||
       /presupuesto|costo|precio|monto|cotizaci[oó]n|\$[xX]\b|xxxx|monto generado/i.test(text)
     ));
+
+  if (llmPromisesQuote && !quoteAlreadyDone) {
+    console.log(`🔔 [PROMISE-QUOTE] El LLM prometió enviar cotización en este turno. Forzando generación.`);
+  }
 
   if (flowCompleteAutoTrigger && !text.includes("[[GENERATE_QUOTE]]") && !quoteAlreadyDone) {
     console.log(`⚡ [AUTO-QUOTE] Todos los datos completos. Forzando generación de cotización.`, {
@@ -699,6 +710,33 @@ export async function processAgentTurn(
 
     // Inyectamos un mensaje fijo para derivar al catálogo web
     text = commandText + "¡Perfecto! Podés ver nuestro catálogo completo de imágenes acá: https://pixel-art-agent.vercel.app/catalog\n\nCuando elijas una, avisame cuál te gustó. Tené en cuenta que la imagen va a ser recreada tal cual está en el banco de imágenes. Esto ya incluye una tarifa fija de diseño.";
+  }
+
+  // ── READY_FILE: verificar si ya existe un archivo de diseño persistido ───────
+  // Si el escenario es READY_FILE pero el agente detectó que el usuario tiene un archivo,
+  // asegurarse de que el agente lo pida si no está guardado.
+  if (localScenario === "READY_FILE" && !incomingMsg.hasFile && !incomingMsg.hasPhoto) {
+    // Verificar si ya hay un archivo de diseño en la base de datos
+    const { data: existingAssets } = await supabase
+      .from("b2c_lead_assets")
+      .select("id")
+      .eq("lead_id", leadId)
+      .eq("asset_type", "DESIGN_FILE")
+      .limit(1);
+
+    const hasDesignFile = existingAssets && existingAssets.length > 0;
+
+    // Si no hay archivo guardado y el LLM no está ya pidiendo el archivo,
+    // inyectar mensaje para solicitarlo
+    if (!hasDesignFile && !/adjunt|mand[aá]|env[íi][ao]|subi[dó]|sube|compart[í]/i.test(text)) {
+      // Solo inyectar si el texto actual no es ya una solicitud del archivo
+      if (!/archivo|diseño|adjunto|pdf|png|jpg|jpeg|ai|eps|psd/i.test(text)) {
+        console.log(`📁 [READY_FILE] Escenario seleccionado pero sin archivo. Solicitando.`);
+        text = "¡Perfecto! Para avanzar necesito que me envíes el archivo de diseño. " +
+          "Puede ser en formato JPG, PNG, PDF, AI o EPS. Lo más importante es que tenga buena resolución para que la impresión quede perfecta.\n\n" +
+          "Enviá el archivo directamente por acá.";
+      }
+    }
   }
 
   // Enviar surface_guide SOLO si el agente está pidiendo la superficie, NO la tenemos,

@@ -316,6 +316,19 @@ export async function POST(request: Request) {
       const agentResponse = await processAgentTurn(leadId, context, incomingMsg);
       console.log("✅ [AGENTE] Respuesta generada exitosamente. Enviando...");
 
+      // --- PARSER DE SELECCIÓN DE IMAGEN DEL BANCO ---
+      const imgSelectionMatch = agentResponse.rawText.match(/\[\[SET_IMAGE_SELECTION:\s*(.*?)\s*\]\]/i);
+      if (imgSelectionMatch) {
+        const selectionText = imgSelectionMatch[1].trim();
+        console.log(`🖼️ [WEBHOOK] Guardando selección de imagen: ${selectionText}`);
+        await supabase.from("b2c_lead_assets").insert({
+          lead_id: leadId,
+          asset_type: "IMAGE_BANK_SELECTION",
+          file_name: "Selección de catálogo",
+          notes: selectionText
+        });
+      }
+
       // Guardar el mensaje del usuario en Redis (caché de sesión)
       await appendToHistory(
         leadId,

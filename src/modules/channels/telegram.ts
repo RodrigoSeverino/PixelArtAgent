@@ -69,7 +69,8 @@ export async function sendMessage(
 }
 
 /**
- * Sends a document (PDF, etc.) to a Telegram chat via a public URL.
+ * Sends a document (PDF, etc.) to a Telegram chat.
+ * We fetch the document first and send it as a file to avoid delivery issues with some URLs.
  */
 export async function sendDocument(
   chatId: number | string,
@@ -77,15 +78,26 @@ export async function sendDocument(
   caption?: string
 ): Promise<boolean> {
   try {
+    // 1. Fetch the document to ensure it's a valid file and get its buffer
+    const docRes = await fetch(documentUrl);
+    if (!docRes.ok) {
+      console.error(`❌ [TELEGRAM] Could not fetch document from URL: ${documentUrl} (Status: ${docRes.status})`);
+      return false;
+    }
+
+    const arrayBuffer = await docRes.arrayBuffer();
+    const blob = new Blob([arrayBuffer], { type: docRes.headers.get("content-type") || "application/pdf" });
+
+    // 2. Prepare multipart/form-data
+    const formData = new FormData();
+    formData.append("chat_id", String(chatId));
+    formData.append("document", blob, "presupuesto.pdf");
+    formData.append("caption", caption ?? "📄 Presupuesto oficial Pixel Art");
+    formData.append("parse_mode", "Markdown");
+
     const response = await fetch(`${getApiBase()}/sendDocument`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        chat_id: chatId,
-        document: documentUrl,
-        caption: caption ?? "📄 Presupuesto oficial Pixel Art",
-        parse_mode: "Markdown",
-      }),
+      body: formData,
     });
 
     const result = await response.json();

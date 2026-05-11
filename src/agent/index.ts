@@ -503,31 +503,23 @@ export async function processAgentTurn(
   }
 
   const pMatch = text.match(/\[\[SET_PRINT:\s*(\w+)\s*\]\]/i);
-  // Captura cuando el LLM confirma el diseño en texto (con o sin comando):
-  // Ej: "Diseño: Personalizado", "diseño personalizado", "Diseño:Personalizado"
-  const mentionsCustomDesign =
-    /diseño\s*:?\s*personalizado|diseno\s*:?\s*personalizado|equipo de arte|diseño exclusivo|diseno exclusivo/i.test(
-      text
-    );
-  const mentionsReadyFile =
-    /diseño\s*:?\s*archivo|diseño\s*:?\s*listo|archivo\s*:?\s*listo|diseño\s*:?\s*ready/i.test(text);
-  const mentionsImageBank =
-    /diseño\s*:?\s*banco|diseño\s*:?\s*galería|diseño\s*:?\s*imagen/i.test(text);
+  
+  // --- AUTO-SENSE SCENARIO (SOLO DEL MENSAJE DEL USUARIO) ---
+  // IMPORTANTE: No parsear el texto del asistente (assistant 'text') para auto-detección,
+  // ya que el asistente suele mencionar todas las opciones en sus preguntas,
+  // lo que generaba falsos positivos (ej: asumiendo CUSTOM_DESIGN porque el agente lo preguntó).
+  if (!localScenario) {
+    const userScenario = extractScenarioFromText(incomingMsg.text);
+    if (userScenario) {
+      localScenario = userScenario;
+      console.log(`🎨 [AUTO-SENSE User] Escenario detectado: ${localScenario}`);
+    }
+  }
 
+  // Los comandos explícitos del LLM [[SET_PRINT:...]] siempre tienen prioridad y se parsean del 'text'
   if (pMatch) {
     localScenario = pMatch[1];
-  } else if (!localScenario) {
-    // Auto-detect from LLM response text when no explicit command was emitted
-    const aiScenario = extractScenarioFromText(text);
-    if (aiScenario) {
-      localScenario = aiScenario;
-    } else if (mentionsCustomDesign) {
-      localScenario = "CUSTOM_DESIGN";
-    } else if (mentionsReadyFile) {
-      localScenario = "READY_FILE";
-    } else if (mentionsImageBank) {
-      localScenario = "IMAGE_BANK";
-    }
+    console.log(`🎨 [IA COMMAND] Escenario seteado por comando: ${localScenario}`);
   }
 
   // Normalización defensiva de escenarios viejos/cortos
@@ -632,6 +624,15 @@ export async function processAgentTurn(
       .from("b2c_leads")
       .update({ address: newAddress, updated_at: now })
       .eq("id", leadId);
+  }
+
+  // --- PARSER DE SELECCIÓN DE IMAGEN DEL BANCO ---
+  // Este comando no afecta la lógica de flujo, pero se captura para persistir en el CRM
+  const imgSelectionMatch = text.match(/\[\[SET_IMAGE_SELECTION:\s*(.*?)\s*\]\]/i);
+  if (imgSelectionMatch) {
+    const selectionText = imgSelectionMatch[1].trim();
+    console.log(`🖼️ [IMAGE_SELECTION] El usuario eligió: ${selectionText}`);
+    // La persistencia real se hace en el webhook/route.ts al leer agentResponse.rawText
   }
 
   // ─── MERGE: siempre combinar valores del turno actual con el contexto persistido ───
@@ -908,6 +909,19 @@ export async function processAgentTurn(
         } else {
           pdfUrl = url;
           console.log(`📄 [PDF] Generado y subido: ${pdfUrl}`);
+
+          // --- ENVÍO AUTOMÁTICO DE GUÍA DE MEDIDAS ---
+          // Al enviar la cotización, si no se envió antes, enviamos la guía de medidas
+          // para que el cliente sepa que son fundamentales para el éxito del trabajo.
+          if (!context.measureGuideSent) {
+            const measureGuideUrl = await getGuideImageUrl("measure");
+            if (measureGuideUrl) {
+              console.log("📏 [AUTO-GUIDE] Incluyendo guía de medidas junto a la cotización.");
+              outgoingImages.push(measureGuideUrl);
+              // Marcar en Redis para no repetir
+              await redis.set(`guide:measure:${leadId}`, "1", { ex: 90 * 60 });
+            }
+          }
         }
       } catch (pdfError) {
         console.error("❌ [PDF] Error generando PDF (fallo silencioso):", pdfError);

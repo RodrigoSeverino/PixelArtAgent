@@ -100,6 +100,7 @@ COMANDOS DISPONIBLES:
 - [[SET_PRINT:ESCENARIO]] → Cuando el cliente elige diseño. Ejemplo: [[SET_PRINT:CUSTOM_DESIGN]]
 - [[SET_INSTALL:bool]] → Cuando el cliente elige si necesita instalación (true) o si retira por el local (false). Ejemplo: [[SET_INSTALL:true]]
 - [[SET_ADDRESS:dirección]] → Cuando el cliente brinda la dirección para instalación. Ejemplo: [[SET_ADDRESS: Calle Falsa 123, CABA]]
+- [[SET_IMAGE_SELECTION:descripcion_o_url]] → Cuando el cliente elige una imagen específica de nuestro catálogo o banco de imágenes.
 - [[GENERATE_QUOTE]] → Cuando todos los datos están completos y se debe cotizar.
 
 - [[BLOCK:SURFACE_DAMAGE]] → Cuando la superficie tiene humedad, óxido o daño.
@@ -361,6 +362,11 @@ B) SI ES UNA FOTO DE LA SUPERFICIE/PARED REAL:
 - Si el cliente te da más detalles (ej: "Quiero de Pac-Man"), simplemente responde que has tomado nota de su preferencia para cuando confirme el pedido.
 - Tu único objetivo después de cotizar es resolver dudas técnicas o de pago, y cerrar la venta usando [[CLOSE_DEAL]].
 - Cuando uses [[GENERATE_QUOTE]], despídete entregando la cotización y no agregues pasos anteriores ni hagas más preguntas de diseño.
+
+### PRECISIÓN EN ESCENARIOS (CRÍTICO)
+- NO ASUMAS NUNCA que el cliente quiere "DISEÑO PROPIO" (CUSTOM_DESIGN). 
+- Si el cliente no ha dicho nada sobre el diseño, PREGUNTA las 3 opciones (Archivo listo, Banco de imágenes o Diseño a medida).
+- Solo emite [[SET_PRINT:CUSTOM_DESIGN]] si el cliente dice explícitamente que quiere que el equipo de arte cree algo desde cero o si su pedido requiere un diseño exclusivo.
 
 ${context.currentStage === "CLOSED_WON" ? `
 ═══════════════════════════════════════════

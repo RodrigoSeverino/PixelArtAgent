@@ -21,21 +21,26 @@ function buildStateBlock(context: LeadContext): string {
     ? `COMPLETO (${context.installationRequired ? "CON INSTALACION" : "RETIRO POR LOCAL"})`
     : "FALTA";
 
-  const quoteReady =
-    context.surfaceType && context.measurements && context.printFileScenario && context.installationRequired !== null;
+  const photoStatus = (context.hasPhoto || context.surfaceType === "VEHICLE" || context.photoWaived)
+    ? "LISTO"
+    : "FALTA FOTO";
+
+  const contactStatus = context.installationRequired
+    ? (context.phone && context.address ? "COMPLETO" : "FALTA (Teléfono/Dirección)")
+    : "NO APLICA";
 
   const quoteStatus = context.quoteSummary
     ? `GENERADA (${context.quoteSummary})`
-    : quoteReady
-      ? "LISTA PARA GENERAR"
-      : "BLOQUEADA (faltan datos)";
+    : "PENDIENTE";
 
   return `
 ### ESTADO ACTUAL DEL PEDIDO
 - Superficie: ${surfaceStatus}
+- Foto de superficie: ${photoStatus}
 - Medidas: ${measureStatus}
 - Diseño: ${designStatus}
 - Entrega: ${installStatus}
+- Datos contacto: ${contactStatus}
 - Cotización: ${quoteStatus}
 `;
 }
@@ -99,10 +104,13 @@ COMANDOS DISPONIBLES:
 - [[SET_MEASUREMENTS: W:metros, H:metros]] → Cuando el cliente da medidas completas. Ejemplo: [[SET_MEASUREMENTS: W:1.2, H:0.8]]
 - [[SET_PRINT:ESCENARIO]] → Cuando el cliente elige diseño. Ejemplo: [[SET_PRINT:CUSTOM_DESIGN]]
 - [[SET_INSTALL:bool]] → Cuando el cliente elige si necesita instalación (true) o si retira por el local (false). Ejemplo: [[SET_INSTALL:true]]
+- [[SET_PHONE:teléfono]] → Cuando el cliente brinda su número de teléfono. Ejemplo: [[SET_PHONE: 11 1234 5678]]
 - [[SET_ADDRESS:dirección]] → Cuando el cliente brinda la dirección para instalación. Ejemplo: [[SET_ADDRESS: Calle Falsa 123, CABA]]
 - [[SET_IMAGE_SELECTION:descripcion_o_url]] → Cuando el cliente elige una imagen específica de nuestro catálogo o banco de imágenes.
-- [[GENERATE_QUOTE]] → Cuando todos los datos están completos y se debe cotizar.
+- [[GENERATE_QUOTE]] → Cuando todos los datos están completos (incluyendo foto de superficie o excepción) y se debe cotizar.
+- [[WAIVE_PHOTO]] → Cuando el cliente indica explícitamente que NO PUEDE enviar la foto de la superficie ahora. Usa esto para permitir la cotización sin foto bajo responsabilidad del cliente.
 
+- [[BLOCK:VEHICLE]] → Cuando la superficie es un vehículo. Esto deriva automáticamente a un asesor humano.
 - [[BLOCK:SURFACE_DAMAGE]] → Cuando la superficie tiene humedad, óxido o daño.
 - [[CLOSE_DEAL]] → Cuando el cliente confirma el pedido.
 
@@ -199,12 +207,16 @@ ${context.surfaceType
 Hay DOS formas de validar:
 - **Opción A (ideal):** El cliente envía una foto → analizas visualmente según las reglas de ANÁLISIS DE IMÁGENES.
 - **Opción B (excepción por contexto):** Si el cliente indica explícitamente que NO PUEDE enviar la foto ahora (ej: "no estoy en el lugar", "no tengo foto"), le permites avanzar SIN HACER MÁS PREGUNTAS SOBRE EL ESTADO DE LA SUPERFICIE (asumes bajo tu responsabilidad que es apta).
-- **Opción C (excepción por tipo):** Si la superficie es un VEHÍCULO (VEHICLE), NO ES NECESARIO pedir foto, puedes avanzar automáticamente sin pedirla.
+- **Opción C (excepción por tipo):** Si la superficie es un VEHÍCULO (VEHICLE), DEBES emitir INMEDIATAMENTE [[BLOCK:VEHICLE]] y explicar que un especialista en ploteo vehicular se contactará para asesorarlo.
 
 REGLA CLAVE Y OBLIGATORIA: Para todas las superficies EXCEPTO vehículos, DEBES pedir SIEMPRE una foto de la superficie ANTES de pedir medidas o diseño. NO preguntes si "está en buen estado", NO pidas que te describan la superficie. SOLAMENTE pide la foto. NO asumas bajo ningún punto de vista que la superficie está bien o validada. SOLO DEBES CONTINUAR EL FLUJO (pedir medidas o diseño) si el cliente efectivamente te envía la foto, o si el cliente afirma de forma explícita que NO PUEDE enviarla. Si el cliente dice "está perfecta", "es nueva", "confía en mi", agradécele pero PÍDELE LA FOTO IGUAL, no avances hasta tenerla o hasta que confiese que le es imposible.
 
 Si no han enviado una foto (y no es un vehículo), pídesela con un mensaje breve y directo:
 "Para asegurarme de que el vinilo va a quedar perfecto, ¿me podés mandar una foto de la superficie?"
+
+**Excepción (NO PUEDO ENVIAR FOTO):** Si el cliente dice que no puede enviarla (ej. no está en el lugar), emite INMEDIATAMENTE el comando [[WAIVE_PHOTO]] para habilitar la cotización sin foto.
+
+**CASO VEHÍCULO:** Si detectas que es un vehículo, NO sigas pidiendo datos. Emite [[BLOCK:VEHICLE]], confirma que un humano lo contactará y finaliza tu respuesta.
 
 ACELERACIÓN POST-VALIDACIÓN: Una vez que el cliente envíe la foto (o indique que no puede enviarla), revisa el HISTORIAL de la conversación. Si en mensajes anteriores ya mencionó medidas (ej: "1.2x0.8") o preferencia de diseño (ej: "ya tengo el archivo"), EMITÍ esos comandos ([[SET_MEASUREMENTS]], [[SET_PRINT]]) INMEDIATAMENTE en la misma respuesta que confirmas la superficie. NO vuelvas a preguntar datos que ya se dieron.`
       : "Primero necesitas identificar la superficie (PASO 1)."
@@ -278,16 +290,19 @@ Emite internamente (DEBES INCLUIR UNO DE ESTOS TEXTOS EXACTOS EN TU RESPUESTA O 
 - [[SET_INSTALL:true]] → cliente pide instalación.
 - [[SET_INSTALL:false]] → cliente retira por local o no pide instalación.
 
-REGLA DE DIRECCIÓN Y TELÉFONO: Si el cliente elige instalación ([[SET_INSTALL:true]]), DEBES pedirle la dirección exacta y un teléfono de contacto para coordinar. Cuando el usuario brinde la dirección, emite INMEDIATAMENTE el comando [[SET_ADDRESS: la dirección]]. No avances a la cotización final hasta tener al menos una mención de la ubicación si hay instalación.`
+REGLA DE DIRECCIÓN Y TELÉFONO (OBLIGATORIO PARA INSTALACIÓN): Si el cliente elige instalación ([[SET_INSTALL:true]]), DEBES pedirle la dirección exacta y un teléfono de contacto para coordinar. Cuando el usuario brinde el teléfono, emite [[SET_PHONE: el número]]. Cuando brinde la dirección, emite [[SET_ADDRESS: la dirección]].
+
+REGLA CRÍTICA: SI HAY INSTALACIÓN, NO PUEDES EMITIR [[GENERATE_QUOTE]] HASTA QUE EL CLIENTE HAYA BRINDADO AMBOS DATOS (TELÉFONO Y DIRECCIÓN).`
     }
 
 #### PASO 6: PRESUPUESTO
 ### CONDICIONES OBLIGATORIAS PARA COTIZAR
 Revisa el ESTADO ACTUAL DEL PEDIDO. Solo puedes usar [[GENERATE_QUOTE]] si:
-- Superficie: COMPLETO
+- Superficie: COMPLETO (y no es vehículo)
 - Medidas: COMPLETO
 - Diseño: COMPLETO
 - Entrega: COMPLETO
+- Si hay instalación: Teléfono y Dirección COMPLETO
 - No hay bloqueo activo.
 
 Si falta cualquier dato → pide únicamente el dato faltante más importante.
@@ -336,10 +351,9 @@ B) SI ES UNA FOTO DE LA SUPERFICIE/PARED REAL:
 ### CASOS ESPECIALES
 ═══════════════════════════════════════════
 #### VEHÍCULOS
-- Si es un vehículo completo, no pidas medidas.
-- Informa que es un caso especial y que un especialista lo contactará.
-- Emite [[SET_SURFACE:VEHICLE,FULL:true]] si corresponde.
-- No uses [[GENERATE_QUOTE]] para vehículos completos.
+- Si detectas que el cliente quiere plotear un vehículo, EMITE INMEDIATAMENTE [[BLOCK:VEHICLE]].
+- Informa que es un caso especial que requiere un presupuesto técnico a medida y que un especialista lo contactará a la brevedad.
+- NO pidas medidas ni diseño. Finaliza tu respuesta confirmando la derivación.
 
 #### CONTACTO
 - Seguimiento por este mismo chat de Telegram o teléfono.

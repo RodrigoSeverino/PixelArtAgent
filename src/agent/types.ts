@@ -67,6 +67,9 @@ export interface LeadContext {
 
   /** Si ya se envió la imagen guía de medidas en esta sesión */
   measureGuideSent: boolean;
+
+  /** Si el cliente explícitamente indicó que no puede enviar foto */
+  photoWaived: boolean;
 }
 
 /* ============================================

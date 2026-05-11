@@ -406,6 +406,7 @@ async function buildLeadContext(
     address: null,
     surfaceGuideSent: false,
     measureGuideSent: false,
+    photoWaived: false,
   };
 
   try {
@@ -426,7 +427,7 @@ async function buildLeadContext(
     // Traer Superficie (última valoración)
     const { data: surfaceData } = await supabase
       .from("b2c_surface_assessments")
-      .select("*")
+      .select("surface_type, is_full_object, photo_url, photo_waived")
       .eq("lead_id", leadId)
       .order("created_at", { ascending: false })
       .limit(1);
@@ -438,6 +439,9 @@ async function buildLeadContext(
       if (surface.photo_url) {
           context.hasPhoto = true;
           context.photoUrl = surface.photo_url;
+      }
+      if (surface.photo_waived) {
+          context.photoWaived = true;
       }
     }
 

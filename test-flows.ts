@@ -15,10 +15,26 @@ const redis = new Redis({
   token: process.env.UPSTASH_REDIS_REST_TOKEN!,
 });
 
-async function appendToHistory(leadId: string, role: string, content: string) {
-  const historyKey = `agent_history:${leadId}`;
-  await redis.rpush(historyKey, JSON.stringify({ role, content }));
-  await redis.expire(historyKey, 60 * 60 * 24); // 24 hours
+async function appendToHistory(leadId: string, role: "user" | "assistant", content: string) {
+  const key = `chat:${leadId}:history`;
+  
+  // 1. Obtener historial actual
+  const raw = await redis.get<string>(key);
+  const history = raw ? (typeof raw === "string" ? JSON.parse(raw) : raw) : [];
+  
+  // 2. Agregar nuevo mensaje
+  history.push({ role, content });
+  
+  // 3. Guardar (limitando a los últimos 30)
+  const updated = history.slice(-30);
+  await redis.set(key, JSON.stringify(updated), { ex: 3600 * 24 });
+  
+  // 4. También guardar en Supabase para auditoría
+  await supabase.from("b2c_conversation_history").insert({
+    lead_id: leadId,
+    role,
+    content
+  });
 }
 
 async function runTest(testName: string, messages: string[], expectedEndStage?: string) {
@@ -31,8 +47,8 @@ async function runTest(testName: string, messages: string[], expectedEndStage?: 
   // Crear el lead
   await supabase.from("b2c_leads").insert({
     id: mockLeadId,
-    phone_number: "+59899123456",
-    status: "NEW",
+    phone: "+59899123456",
+    current_stage: "NEW",
   });
 
   for (const [index, msg] of messages.entries()) {
@@ -55,7 +71,7 @@ async function runTest(testName: string, messages: string[], expectedEndStage?: 
       leadId: mockLeadId,
       currentStage: currentLead?.current_stage || "NEW",
       customerName: "Test User",
-      phone: "+59899123456",
+      phone: currentLead?.phone || null,
       channel: "TELEGRAM" as any,
       surfaceType: surface?.surface_type || null,
       isFullObject: surface?.is_full_object || false,
@@ -65,11 +81,12 @@ async function runTest(testName: string, messages: string[], expectedEndStage?: 
       squareMeters: measures?.square_meters || null,
       printFileScenario: quote?.print_file_scenario || null,
       quoteSummary: quote ? `Total: $${quote.total_price_uyu}` : null,
-      installationRequired: null,
+      installationRequired: quote?.installation_required ?? null,
       orderNumber: currentLead?.order_number || null,
       address: currentLead?.address || null,
       surfaceGuideSent: false,
       measureGuideSent: false,
+      photoWaived: surface?.photo_waived || false,
     };
 
     const incomingMsg = {
@@ -102,12 +119,12 @@ async function runTest(testName: string, messages: string[], expectedEndStage?: 
   // Comprobar estado final
   const { data: lead } = await supabase
     .from("b2c_leads")
-    .select("status, current_stage")
+    .select("current_stage")
     .eq("id", mockLeadId)
     .single();
 
   console.log(`\n📊 ESTADO FINAL DEL LEAD:`);
-  console.log(`Status: ${lead?.status} | Stage: ${lead?.current_stage}`);
+  console.log(`Stage: ${lead?.current_stage}`);
   
   if (expectedEndStage) {
     if (lead?.current_stage === expectedEndStage) {
@@ -131,28 +148,38 @@ async function main() {
     "BLOCKED"
   );
 
-  // Flujo 2: Superficie apta, medidas grandes (visita técnica)
+  // Flujo 2: Vehículo (Handoff inmediato)
   await runTest(
-    "2. Superficie apta, Medidas Grandes",
+    "2. Vehículo (HUMAN_HANDOFF)",
     [
-      "Hola, necesito plotear una pared de madera",
-      "Está perfecta, es nueva y lisa",
-      "Mide 3 metros de ancho por 2 de alto",
-      "Quiero ver opciones del banco de imágenes"
+      "Hola, quiero plotear mi auto"
     ],
-    "QUOTE_SENT"
+    "HUMAN_HANDOFF"
   );
 
-  // Flujo 3: Heladera (Medidas pequeñas, diseño personalizado)
+  // Flujo 3: Instalación sin datos (Loop)
   await runTest(
-    "3. Heladera con diseño personalizado",
+    "3. Instalación requiere teléfono y dirección",
+    [
+      "Hola, quiero plotear una pared de 2x2, ya tengo el archivo y necesito que lo instalen",
+      "Está perfecta",
+      "Mi dirección es Calle Falsa 123",
+      "Mi teléfono es 11 1234 5678"
+    ],
+    "QUOTE_GENERATED"
+  );
+
+  // Flujo 4: Heladera (Medidas pequeñas, diseño personalizado)
+  await runTest(
+    "4. Heladera con diseño personalizado",
     [
       "Hola, quiero plotear mi heladera",
       "Está impecable, cero óxido, tiene 2 años",
       "Mide 60cm de ancho por 1.80m de alto",
-      "Quiero un diseño personalizado, tengo una idea de Los Simpsons"
+      "Quiero un diseño personalizado, tengo una idea de Los Simpsons",
+      "Lo retiro yo por el local"
     ],
-    "QUOTE_SENT" // Al pedir diseño personalizado, debería mandar la cotización y luego el bot avisar que se contactará un humano para el diseño
+    "QUOTE_GENERATED"
   );
 }
 

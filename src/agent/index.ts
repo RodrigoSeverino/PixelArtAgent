@@ -330,10 +330,21 @@ export async function processAgentTurn(
     const aiReason = reasonMatch ? reasonMatch[1].trim() : null;
     console.log(`🚫 [BLOCK] Bloqueo detectado: ${blockMatch[1]}. Razón: ${aiReason || "No especificada"}`);
 
-    const blockReason = blockMatch[1] === "SURFACE_DAMAGE" 
-      ? (aiReason ? `IA: ${aiReason}` : "Superficie no apta (daño detectado).")
-      : `Bloqueo automático: ${blockMatch[1]}`;
-    await updateLeadStatus(leadId, "BLOCKED", blockReason);
+    let blockReason = "";
+    let finalStage: LeadStage = "BLOCKED";
+    let defaultMessage = "Lamentablemente la superficie no está en condiciones óptimas para el trabajo, ya que con humedad o daño el vinilo no se adhiere bien. Alguien de nuestro equipo se contactará a la brevedad para asesorarte cómo seguir.";
+
+    if (blockMatch[1] === "SURFACE_DAMAGE") {
+      blockReason = aiReason ? `IA: ${aiReason}` : "Superficie no apta (daño detectado).";
+    } else if (blockMatch[1] === "VEHICLE") {
+      blockReason = "Derivación automática: Vehículo.";
+      finalStage = "HUMAN_HANDOFF";
+      defaultMessage = "Los ploteos vehiculares requieren una revisión técnica presencial y un presupuesto a medida. Alguien de nuestro equipo se contactará a la brevedad para asesorarte cómo seguir.";
+    } else {
+      blockReason = `Bloqueo automático: ${blockMatch[1]}`;
+    }
+
+    await updateLeadStatus(leadId, finalStage, blockReason);
 
     // En modo bloqueado, limpiamos el texto y retornamos directamente
     const finalCleanup = cleanAssistantText(text);
@@ -343,12 +354,10 @@ export async function processAgentTurn(
       .filter((m) => m.length > 0);
 
     return {
-      messages: messages.length > 0
-        ? messages
-        : ["Lamentablemente la superficie no está en condiciones óptimas para el trabajo, ya que con humedad o daño el vinilo no se adhiere bien. Alguien de nuestro equipo se contactará a la brevedad para asesorarte cómo seguir."],
+      messages: messages.length > 0 ? messages : [defaultMessage],
       images: [],
       documents: [],
-      newStage: "BLOCKED",
+      newStage: finalStage,
       requiresHumanReview: true,
       rawText: text
     };
@@ -502,6 +511,21 @@ export async function processAgentTurn(
     await updateLeadStatus(leadId, "SURFACE_SELECTED");
   }
 
+  const wPhotoMatch = text.match(/\[\[WAIVE_PHOTO\]\]/i);
+  if (wPhotoMatch) {
+    console.log(`📸 [PHOTO] Cliente indicó que no puede enviar foto. Marcando waived.`);
+    await supabase
+      .from("b2c_surface_assessments")
+      .upsert(
+        {
+          lead_id: leadId,
+          photo_waived: true,
+          updated_at: now,
+        },
+        { onConflict: "lead_id" }
+      );
+  }
+
   const pMatch = text.match(/\[\[SET_PRINT:\s*(\w+)\s*\]\]/i);
   
   // --- AUTO-SENSE SCENARIO (SOLO DEL MENSAJE DEL USUARIO) ---
@@ -626,6 +650,17 @@ export async function processAgentTurn(
       .eq("id", leadId);
   }
 
+  // --- PARSER DE TELÉFONO ---
+  const phoneMatch = text.match(/\[\[SET_PHONE:\s*(.*?)\s*\]\]/i);
+  if (phoneMatch) {
+    const newPhone = phoneMatch[1].trim();
+    console.log(`📞 [PHONE] Teléfono detectado: ${newPhone}`);
+    await supabase
+      .from("b2c_leads")
+      .update({ phone: newPhone, updated_at: now })
+      .eq("id", leadId);
+  }
+
   // --- PARSER DE SELECCIÓN DE IMAGEN DEL BANCO ---
   // Este comando no afecta la lógica de flujo, pero se captura para persistir en el CRM
   const imgSelectionMatch = text.match(/\[\[SET_IMAGE_SELECTION:\s*(.*?)\s*\]\]/i);
@@ -651,14 +686,22 @@ export async function processAgentTurn(
   // PARSER DE COTIZACIÓN
   // ═══════════════════════════════════════════════════════════════════════
 
+  const isPhotoValid = context.hasPhoto || localSurfaceType === "VEHICLE" || context.photoWaived || Boolean(wPhotoMatch);
+
+  const hasAddress = Boolean(context.address || addrMatch);
+  const hasPhone = Boolean(context.phone || phoneMatch);
+
   // Safety net: si el modelo tiene todos los datos pero olvidó emitir [[GENERATE_QUOTE]], lo forzamos.
   // IMPORTANTE: usamos los valores YA MERGEADOS con el contexto (no solo los del turno actual).
   // Esto evita el loop donde el agente pregunta datos que ya fueron respondidos en turnos anteriores.
   const flowCompleteAutoTrigger =
     Boolean(localM2) &&
     Boolean(localSurfaceType) &&
+    localSurfaceType !== "VEHICLE" &&
     Boolean(localScenario) &&
-    localInstall !== null;
+    localInstall !== null &&
+    isPhotoValid &&
+    (!localInstall || (hasAddress && hasPhone));
 
   const quoteAlreadyDone =
     context.currentStage === "QUOTE_GENERATED" ||
@@ -769,6 +812,7 @@ export async function processAgentTurn(
     const hasSurface = Boolean(localSurfaceType);
     const hasScenario = Boolean(localScenario);
     const hasInstall = localInstall !== null;
+    // isPhotoValid ya fue definida arriba
 
     console.log("[QUOTE-GATE]", {
       leadId,
@@ -788,7 +832,14 @@ export async function processAgentTurn(
       pMatch: Boolean(pMatch),
     });
 
-    const isFlowComplete = hasMeasurements && hasSurface && hasScenario && hasInstall;
+    const isFlowComplete = 
+      hasMeasurements && 
+      hasSurface && 
+      localSurfaceType !== "VEHICLE" &&
+      hasScenario && 
+      hasInstall && 
+      isPhotoValid &&
+      (!localInstall || (hasAddress && hasPhone));
 
     if (!hasMeasurements) {
       console.warn("⚠️ [FALLBACK] No hay medidas para cotizar.", {
@@ -807,6 +858,7 @@ export async function processAgentTurn(
           surface: !hasSurface,
           scenario: !hasScenario,
           install: !hasInstall,
+          photo: !isPhotoValid,
         },
         localM2,
         localSurfaceType,
@@ -823,6 +875,15 @@ export async function processAgentTurn(
       } else if (!hasInstall) {
         text =
           "Antes de enviarte el presupuesto necesito confirmar la entrega: ¿vas a necesitar que nosotros nos encarguemos de la instalación o preferís retirarlo por nuestro local?";
+      } else if (!isPhotoValid) {
+        text =
+          "Para asegurarme de que el vinilo va a quedar perfecto, ¿me podés mandar una foto de la superficie?";
+      } else if (localInstall && !hasAddress) {
+        text =
+          "Para coordinar la instalación necesito que me indiques la dirección exacta donde se realizaría el trabajo.";
+      } else if (localInstall && !hasPhone) {
+        text =
+          "Para coordinar la instalación necesito un número de teléfono de contacto.";
       } else {
         text =
           "Antes de cotizar necesito confirmar un dato más del pedido para avanzar.";

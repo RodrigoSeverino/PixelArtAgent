@@ -63,6 +63,7 @@ function freshContext(overrides?: Partial<LeadContext>): LeadContext {
     address: null,
     surfaceGuideSent: false,
     measureGuideSent: false,
+    photoWaived: false,
     ...overrides,
   };
 }

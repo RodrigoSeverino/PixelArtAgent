@@ -317,7 +317,7 @@ export async function POST(request: Request) {
       console.log("✅ [AGENTE] Respuesta generada exitosamente. Enviando...");
 
       // --- PARSER DE SELECCIÓN DE IMAGEN DEL BANCO ---
-      const imgSelectionMatch = agentResponse.rawText.match(/\[\[SET_IMAGE_SELECTION:\s*(.*?)\s*\]\]/i);
+      const imgSelectionMatch = agentResponse.rawText?.match(/\[\[SET_IMAGE_SELECTION:\s*(.*?)\s*\]\]/i);
       if (imgSelectionMatch) {
         const selectionText = imgSelectionMatch[1].trim();
         console.log(`🖼️ [WEBHOOK] Guardando selección de imagen: ${selectionText}`);

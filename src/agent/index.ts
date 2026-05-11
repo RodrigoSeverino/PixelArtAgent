@@ -733,7 +733,8 @@ export async function processAgentTurn(
   if (askingForSurface && !context.surfaceType && !context.surfaceGuideSent) {
     const surfaceGuideUrl = await getGuideImageUrl("surface");
     if (surfaceGuideUrl) {
-      outgoingImages.push(surfaceGuideUrl);
+      console.log("🧩 [GUIDE] Agregando link de guía de superficie al texto.");
+      text += `\n\n💡 Acá tenés una guía sobre las superficies: ${surfaceGuideUrl}`;
       context.surfaceGuideSent = true;
       // Marcar en Redis para persistir el flag en la sesión
       await redis.set(`guide:surface:${leadId}`, "1", { ex: 90 * 60 });
@@ -749,7 +750,8 @@ export async function processAgentTurn(
   if (askingForMeasures && !context.measurements && !context.measureGuideSent) {
     const measureGuideUrl = await getGuideImageUrl("measure");
     if (measureGuideUrl) {
-      outgoingImages.push(measureGuideUrl);
+      console.log("📏 [GUIDE] Agregando link de guía de medidas al texto.");
+      text += `\n\n💡 Mirá esta guía para tomar las medidas correctamente: ${measureGuideUrl}`;
       context.measureGuideSent = true;
       // Marcar en Redis para persistir el flag en la sesión
       await redis.set(`guide:measure:${leadId}`, "1", { ex: 90 * 60 });
@@ -909,19 +911,6 @@ export async function processAgentTurn(
         } else {
           pdfUrl = url;
           console.log(`📄 [PDF] Generado y subido: ${pdfUrl}`);
-
-          // --- ENVÍO AUTOMÁTICO DE GUÍA DE MEDIDAS ---
-          // Al enviar la cotización, si no se envió antes, enviamos la guía de medidas
-          // para que el cliente sepa que son fundamentales para el éxito del trabajo.
-          if (!context.measureGuideSent) {
-            const measureGuideUrl = await getGuideImageUrl("measure");
-            if (measureGuideUrl) {
-              console.log("📏 [AUTO-GUIDE] Incluyendo guía de medidas junto a la cotización.");
-              outgoingImages.push(measureGuideUrl);
-              // Marcar en Redis para no repetir
-              await redis.set(`guide:measure:${leadId}`, "1", { ex: 90 * 60 });
-            }
-          }
         }
       } catch (pdfError) {
         console.error("❌ [PDF] Error generando PDF (fallo silencioso):", pdfError);

@@ -60,6 +60,21 @@ export async function sendMessage(
     const result = await response.json();
     if (!result.ok) {
       console.error("❌ [TELEGRAM API ERROR] sendMessage:", JSON.stringify(result, null, 2));
+      
+      // FALLBACK: If it's a parsing error, retry without Markdown
+      if (result.error_code === 400 && result.description?.includes("can't parse entities")) {
+        console.log("🔄 [TELEGRAM] Retrying sendMessage without parse_mode due to entity error.");
+        const retryResponse = await fetch(`${getApiBase()}/sendMessage`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            chat_id: chatId,
+            text,
+          }),
+        });
+        const retryResult = await retryResponse.json();
+        return retryResult.ok === true;
+      }
     }
     return result.ok === true;
   } catch (error) {
@@ -103,6 +118,18 @@ export async function sendDocument(
     const result = await response.json();
     if (!result.ok) {
       console.error("❌ [TELEGRAM API ERROR] sendDocument:", JSON.stringify(result, null, 2));
+
+      // FALLBACK: If it's a parsing error in caption, retry without Markdown
+      if (result.error_code === 400 && result.description?.includes("can't parse entities")) {
+        console.log("🔄 [TELEGRAM] Retrying sendDocument without parse_mode in caption.");
+        formData.delete("parse_mode");
+        const retryRes = await fetch(`${getApiBase()}/sendDocument`, {
+          method: "POST",
+          body: formData,
+        });
+        const retryResult = await retryRes.json();
+        return retryResult.ok === true;
+      }
     }
     return result.ok === true;
   } catch (error) {

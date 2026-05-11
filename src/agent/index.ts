@@ -960,8 +960,8 @@ export async function processAgentTurn(
   // Limpiar cualquier link markdown [texto](url) o http crudo que el modelo haya alucinado
   // PERO permitir el link del catálogo oficial (pixel-art-agent.vercel.app)
   finalCleanup = finalCleanup
-    .replace(/\[([^\]]+)\]\((?!https?:\/\/pixel-art-agent\.vercel\.app)[^)]+\)/g, "$1") // Remueve Markdown links excepto catálogo
-    .replace(/https?:\/\/(?!pixel-art-agent\.vercel\.app)[^\s]+/g, ""); // Remueve raw URLs excepto catálogo
+    .replace(/\[([^\]]+)\]\((?!https?:\/\/(?:pixel-art-agent\.vercel\.app|jkehckvkxigxwmkuunvc\.supabase\.co))[^)]+\)/g, "$1") 
+    .replace(/https?:\/\/(?!pixel-art-agent\.vercel\.app|jkehckvkxigxwmkuunvc\.supabase\.co)[^\s]+/g, ""); 
 
   const messages = finalCleanup
     .split(/\s*---\s*/)

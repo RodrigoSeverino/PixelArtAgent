@@ -85,7 +85,7 @@ function extractMeasurementsFromText(
 function extractSurfaceFromText(text: string): { type: string; full: boolean } | null {
   const t = text.toLowerCase();
   
-  const mapping: Record<string, string> = {
+  const mapping: Record<string, SurfaceType> = {
     pared: "WALL",
     wall: "WALL",
     muro: "WALL",
@@ -105,6 +105,12 @@ function extractSurfaceFromText(text: string): { type: string; full: boolean } |
     camioneta: "VEHICLE",
     vehiculo: "VEHICLE",
     vehículo: "VEHICLE",
+    furgon: "VEHICLE",
+    furgón: "VEHICLE",
+    camion: "VEHICLE",
+    camión: "VEHICLE",
+    utilitario: "VEHICLE",
+    pick: "VEHICLE",
   };
 
   for (const [key, val] of Object.entries(mapping)) {
@@ -117,12 +123,69 @@ function extractSurfaceFromText(text: string): { type: string; full: boolean } |
   return null;
 }
 
-function extractScenarioFromText(text: string): string | null {
+function extractScenarioFromText(text: string): PrintFileScenario | null {
   const t = text.toLowerCase();
-  if (t.includes("mi archivo") || t.includes("mi diseño") || t.includes("ya tengo") || t.includes("listo")) return "READY_FILE";
-  if (t.includes("banco") || t.includes("galería") || t.includes("galeria") || t.includes("catálogo") || t.includes("catalogo")) return "IMAGE_BANK";
-  if (t.includes("personalizado") || t.includes("hacer uno") || t.includes("diseñen") || t.includes("disenen")) return "CUSTOM_DESIGN";
+  // READY_FILE
+  if (t.includes("mi archivo") || t.includes("mi diseño") || t.includes("mi diseno") || 
+      t.includes("ya tengo") || t.includes("ya lo tengo") || t.includes("tengo el archivo") ||
+      t.includes("te paso el archivo") || t.includes("te mando el archivo") ||
+      t.includes("archivo listo") || t.includes("listo para imprimir") ||
+      t.includes("lo tengo en pdf") || t.includes("lo tengo en illustrator") ||
+      t.includes("tengo un logo") || t.includes("tengo una imagen")) return "READY_FILE";
+  
+  // IMAGE_BANK
+  if (t.includes("banco") || t.includes("galería") || t.includes("galeria") || 
+      t.includes("catálogo") || t.includes("catalogo") || t.includes("elijan ustedes") ||
+      t.includes("una foto de ustedes") || t.includes("alguna imagen suya") ||
+      t.includes("qué opciones tienen") || t.includes("modelos que tengan")) return "IMAGE_BANK";
+  
+  // CUSTOM_DESIGN
+  if (t.includes("personalizado") || t.includes("hacer uno") || t.includes("diseñen") || 
+      t.includes("disenen") || t.includes("hagan un diseño") || t.includes("crear un diseño") ||
+      t.includes("mandala") || t.includes("diseño a medida") || t.includes("diseno a medida") ||
+      t.includes("algo especial") || t.includes("idea que tengo")) return "CUSTOM_DESIGN";
+  
   return null;
+}
+
+/**
+ * Intenta extraer teléfono y dirección del texto.
+ */
+function extractContactInfoFromText(text: string): { phone?: string; address?: string } {
+  const res: { phone?: string; address?: string } = {};
+  
+  // Teléfono: busca secuencias de dígitos de al menos 8 números, opcionalmente con + o espacios
+  const phoneRegex = /(\+?\d[\d\s-]{7,}\d)/;
+  const phoneMatch = text.match(phoneRegex);
+  if (phoneMatch) {
+    const cleanPhone = phoneMatch[1].replace(/\s+/g, "");
+    if (cleanPhone.length >= 8) {
+      res.phone = cleanPhone;
+    }
+  }
+
+  // Dirección: busca keywords comunes de dirección en Uruguay/Arg
+  // "calle X", "barrio X", "esquina X", "num X", "dir: X"
+  const addressKeywords = ["calle", "esquina", "barrio", "dirección", "direccion", "apto", "apartamento", "número", "numero", "nro"];
+  const lowerText = text.toLowerCase();
+  
+  if (addressKeywords.some(k => lowerText.includes(k)) || /\b\d{4,5}\b/.test(text)) {
+    // Si contiene keywords o lo que parece un código postal/número de puerta de 4-5 cifras
+    // Intentamos capturar una frase que parezca dirección
+    const addrRegex = /(?:direcci[oó]n:?\s*|viva?o?\s*en\s*|estoy\s*en\s*)(.*)/i;
+    const addrMatch = text.match(addrRegex);
+    if (addrMatch) {
+      res.address = addrMatch[1].trim();
+    } else {
+      // Si no hay prefijo claro pero hay keywords, mandamos el texto completo para que el CRM lo guarde
+      // (Limitado para no guardar un párrafo entero)
+      if (text.length < 100) {
+        res.address = text.trim();
+      }
+    }
+  }
+
+  return res;
 }
 
 /**
@@ -163,10 +226,7 @@ function extractInstallFromText(text: string): boolean | null {
 
 function cleanAssistantText(text: string): string {
   return text
-    .replace(/\[\[GENERATE_QUOTE\]\]/g, "")
-    .replace(/\[\[SET_.*?\]\]/g, "")
-    .replace(/\[\[BLOCK:.*?\]\]/g, "")
-    .replace(/\[\[CLOSE_DEAL\]\]/g, "")
+    .replace(/\[\[.*?\]\]/g, "") // Remueve cualquier comando tipo [[COMANDO]]
     .replace(/^\s*\(.*?cotizaci[oó]n.*?\)\s*$/gim, "")
     .replace(/^\s*\(.*?b[uú]squeda.*?im[aá]genes.*?\)\s*$/gim, "")
     .replace(/XXXX|incluya el monto.*?aquí|precio real calculado/gi, "")
@@ -261,197 +321,21 @@ export async function processAgentTurn(
 
     // Status tracking: medidas recibidas
     await updateLeadStatus(leadId, "MEASUREMENTS_RECEIVED");
+    // Sincronizar contexto
+    context.measurements = `${localW}m x ${localH}m`;
+    context.squareMeters = localM2;
+    context.currentStage = "MEASUREMENTS_RECEIVED";
   }
 
-  // 1. Recuperar historial de sesión activa desde Redis
-  const history = await getConversationHistory(leadId);
-  console.log(`📖 [AGENT SESSION]
-    LeadID: ${leadId}
-    Stage: ${context.currentStage}
-    History: ${history.length} msgs
-    Has Quote: ${!!context.quoteSummary}
-  `);
-
-  // 2. Construir el mensaje actual
-  let fallbackText = "Aquí tiene la fotografía de mi superficie.";
-  if (incomingMsg.hasFile && incomingMsg.fileName) {
-    fallbackText = `He enviado un archivo adjunto llamado: ${incomingMsg.fileName}`;
-  }
-
-  const currentContent: any[] = [
-    {
-      type: "text",
-      text: incomingMsg.text || fallbackText,
-    },
-  ];
-
-  if (incomingMsg.hasPhoto && incomingMsg.photoUrl) {
-    try {
-      console.log(`[AGENT] Descargando imagen manualmente para evitar Timeout AI SDK: ${incomingMsg.photoUrl}`);
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
-
-      const res = await fetch(incomingMsg.photoUrl, { signal: controller.signal });
-      clearTimeout(timeoutId);
-
-      if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);
-      const arrayBuffer = await res.arrayBuffer();
-      const imageBytes = new Uint8Array(arrayBuffer);
-      currentContent.push({ type: "image", image: imageBytes });
-      console.log(`[AGENT] Imagen descargada exitosamente (${imageBytes.length} bytes)`);
-    } catch (err) {
-      console.error(`❌ [AGENT] Fallo al descargar imagen, enviando URL directa al SDK:`, err);
-      currentContent.push({ type: "image", image: incomingMsg.photoUrl });
-    }
-  }
-
-
-  const historyWithNew = [...history, { role: "user", content: currentContent }];
-
-  const prompt = buildSystemPrompt(context);
-
-  const result = await generateText({
-    model: openai("gpt-4o-mini"),
-    system: prompt,
-    messages: historyWithNew as any,
-  });
-
-  let text = result.text;
-
-  // ═══════════════════════════════════════════════════════════════════════
-  // PARSER DE BLOQUEO (DEBE IR PRIMERO)
-  // ═══════════════════════════════════════════════════════════════════════
-  console.log(`🤖 [IA RESPONSE] Turno para lead ${leadId}: "${text}"`);
-
-  const blockMatch = text.match(/\[\[BLOCK:(\w+)\]\]/i);
-  const reasonMatch = text.match(/\[\[REASON:(.*?)\]\]/i);
-
-  if (blockMatch) {
-    const aiReason = reasonMatch ? reasonMatch[1].trim() : null;
-    console.log(`🚫 [BLOCK] Bloqueo detectado: ${blockMatch[1]}. Razón: ${aiReason || "No especificada"}`);
-
-    let blockReason = "";
-    let finalStage: LeadStage = "BLOCKED";
-    let defaultMessage = "Lamentablemente la superficie no está en condiciones óptimas para el trabajo, ya que con humedad o daño el vinilo no se adhiere bien. Alguien de nuestro equipo se contactará a la brevedad para asesorarte cómo seguir.";
-
-    if (blockMatch[1] === "SURFACE_DAMAGE") {
-      blockReason = aiReason ? `IA: ${aiReason}` : "Superficie no apta (daño detectado).";
-    } else if (blockMatch[1] === "VEHICLE") {
-      blockReason = "Derivación automática: Vehículo.";
-      finalStage = "HUMAN_HANDOFF";
-      defaultMessage = "Los ploteos vehiculares requieren una revisión técnica presencial y un presupuesto a medida. Alguien de nuestro equipo se contactará a la brevedad para asesorarte cómo seguir.";
-    } else {
-      blockReason = `Bloqueo automático: ${blockMatch[1]}`;
-    }
-
-    await updateLeadStatus(leadId, finalStage, blockReason);
-
-    // En modo bloqueado, limpiamos el texto y retornamos directamente
-    const finalCleanup = cleanAssistantText(text);
-    const messages = finalCleanup
-      .split(/\s*---\s*/)
-      .map((m) => m.trim())
-      .filter((m) => m.length > 0);
-
-    return {
-      messages: messages.length > 0 ? messages : [defaultMessage],
-      images: [],
-      documents: [],
-      newStage: finalStage,
-      requiresHumanReview: true,
-      rawText: text
-    };
-  }
-
-  // ═══════════════════════════════════════════════════════════════════════
-  // PARSER DE MEDIDAS (AI RESPONSE)
-  // ═══════════════════════════════════════════════════════════════════════
-  const mMatch = text.match(
-    /\[\[SET_MEASUREMENTS:\s*W:\s*([\d.]+)\s*,\s*H:\s*([\d.]+)\s*\]\]/i
-  );
-  const aiNaturalMeasures = extractMeasurementsFromText(text);
-
-  if (mMatch) {
-    localW = parseFloat(mMatch[1]);
-    localH = parseFloat(mMatch[2]);
-    // Safety check: LLM sometimes forgets to convert cm to m
-    if (localW > 10) localW = localW / 100;
-    if (localH > 10) localH = localH / 100;
-    localM2 = Number((localW * localH).toFixed(2));
-  } else if (aiNaturalMeasures) {
-    localW = localW || aiNaturalMeasures.w;
-    localH = localH || aiNaturalMeasures.h;
-    localM2 = localM2 || Number((localW * localH).toFixed(2));
-  }
-
-  // Sincronizar con el contexto si todavía no tenemos nada localmente
-  if (!localM2) {
-    localM2 = context.squareMeters ?? null;
-  }
-  
-  // Siempre intentar recuperar W y H del contexto si existen
-  if (!localW || !localH) {
-    if (context.measurements) {
-      const fromCtx = extractMeasurementsFromText(context.measurements);
-      if (fromCtx) {
-        localW = fromCtx.w;
-        localH = fromCtx.h;
-        if (!localM2) {
-          localM2 = Number((localW * localH).toFixed(2));
-        }
-      }
-    }
-  }
-
-  // Si detectamos algo nuevo o consolidado que no estaba en el contexto, guardamos.
-  if (
-    localW &&
-    localH &&
-    localM2 &&
-    (!context.squareMeters || localM2 !== context.squareMeters)
-  ) {
-    console.log(`🛠️ [MEMORIA] Medidas consolidadas: ${localW}x${localH}`);
-
-    const { error: consolidatedMeasurementError } = await supabase
-      .from("b2c_measurements")
-      .upsert(
-        {
-          lead_id: leadId,
-          width_meters: localW,
-          height_meters: localH,
-          square_meters: localM2,
-          updated_at: now,
-        },
-        { onConflict: "lead_id" }
-      );
-
-    if (consolidatedMeasurementError) {
-      console.error("❌ [MEMORIA] Error guardando medidas consolidadas", {
-        leadId,
-        localW,
-        localH,
-        localM2,
-        error: consolidatedMeasurementError,
-      });
-    }
-
-    // Status tracking: medidas recibidas
-    await updateLeadStatus(leadId, "MEASUREMENTS_RECEIVED");
-  }
-
-  // ═══════════════════════════════════════════════════════════════════════
-  // PARSER DE ESCENARIO Y SUPERFICIE (PARA ESTE TURNO)
-  // ═══════════════════════════════════════════════════════════════════════
+  // --- AUTO-SENSE SURFACE (DEL MENSAJE DEL USUARIO) ---
+  // Detectar superficie antes de la IA para que el prompt tenga el contexto actualizado
   let localSurfaceType = context.surfaceType ?? null;
-  let localScenario = context.printFileScenario ?? null;
   let isFullObject = context.isFullObject ?? false;
-
-  // --- AUTO-SENSE (DE LOS MENSAJES DEL USUARIO) ---
   const userSurface = extractSurfaceFromText(incomingMsg.text);
   if (userSurface) {
     localSurfaceType = userSurface.type;
     isFullObject = userSurface.full;
-    console.log(`🏠 [AUTO-SENSE] Superficie detectada: ${localSurfaceType} (Full: ${isFullObject})`);
+    console.log(`🏠 [AUTO-SENSE PRE-IA] Superficie detectada: ${localSurfaceType} (Full: ${isFullObject})`);
     
     // Guardar inmediatamente si detectamos algo nuevo
     await supabase
@@ -468,335 +352,288 @@ export async function processAgentTurn(
 
     // Status tracking: superficie seleccionada
     if (!context.surfaceType) {
-      await updateLeadStatus(leadId, "SURFACE_SELECTED");
+      const stage = localSurfaceType === "VEHICLE" ? "HUMAN_HANDOFF" : "SURFACE_SELECTED";
+      await updateLeadStatus(leadId, stage);
+      // Actualizamos el contexto para que el prompt refleje el cambio
+      context.surfaceType = localSurfaceType;
+      context.currentStage = stage;
     }
   }
 
+  let localScenario = context.printFileScenario ?? null;
   const userScenario = extractScenarioFromText(incomingMsg.text);
   if (userScenario) {
     localScenario = userScenario;
-    console.log(`🎨 [AUTO-SENSE] Escenario detectado: ${localScenario}`);
+    console.log(`🎨 [AUTO-SENSE PRE-IA] Escenario detectado: ${localScenario}`);
+    // Actualizamos el contexto para el prompt
+    context.printFileScenario = localScenario;
+    
+    // Status tracking: escenario seleccionado
+    if (context.currentStage === "MEASUREMENTS_RECEIVED" || context.currentStage === "SURFACE_SELECTED") {
+       await updateLeadStatus(leadId, "PRINT_FILE_SCENARIO_SELECTED");
+       context.currentStage = "PRINT_FILE_SCENARIO_SELECTED";
+    }
   }
 
-  const sMatch = text.match(
-    /\[\[SET_SURFACE:\s*(\w+)\s*,\s*FULL:\s*(\w+)\s*\]\]/i
-  );
+  // --- AUTO-SENSE EXTRA (SCENARIO & INSTALLATION) ---
+  const isInstallation = /instalación|instalacion|instalar|coloquen|colocacion|vengan a casa/i.test(incomingMsg.text);
+  const isRetiro = /retiro|paso a buscar|local|voy yo/i.test(incomingMsg.text);
+  const isReadyFile = /ya tengo el diseño|listo para imprimir|tengo el archivo|tengo el pdf/i.test(incomingMsg.text);
+  const isCustomDesign = /diseño personalizado|haganmelo ustedes|quiero que lo diseñen/i.test(incomingMsg.text);
+  const isImageBank = /catalogo|banco de imagenes|ver opciones|fotos de ustedes/i.test(incomingMsg.text);
 
+  let localInstall = context.installationRequired;
+  if (isInstallation) localInstall = true;
+  if (isRetiro) localInstall = false;
+
+  if (localInstall !== context.installationRequired && localInstall !== null) {
+     context.installationRequired = localInstall;
+     await supabase.from("b2c_quotes").upsert({ lead_id: leadId, installation_required: localInstall, updated_at: now }, { onConflict: "lead_id" });
+  }
+
+  if (isReadyFile) localScenario = "READY_FILE";
+  if (isCustomDesign) localScenario = "CUSTOM_DESIGN";
+  if (isImageBank) localScenario = "IMAGE_BANK";
+
+  if (localScenario !== context.printFileScenario && localScenario !== null) {
+     context.printFileScenario = localScenario;
+     await supabase.from("b2c_quotes").upsert({ lead_id: leadId, print_file_scenario: localScenario, updated_at: now }, { onConflict: "lead_id" });
+  }
+
+  // --- AUTO-SENSE CONTACT DATA ---
+  const phoneDetected = incomingMsg.text.match(/\+?\d{7,15}/);
+  const addressKeywords = /Av\.|Calle|Nº|Numero|Ruta|Km|Piso|Depto|Casa|Manzana|Solar|Apartamento/i;
+  const addressDetected = addressKeywords.test(incomingMsg.text);
+
+  if (phoneDetected && !context.phone) {
+    context.phone = phoneDetected[0];
+    await supabase.from("b2c_leads").update({ phone: context.phone, updated_at: now }).eq("id", leadId);
+  }
+  if (addressDetected && !context.address) {
+    context.address = incomingMsg.text;
+    await supabase.from("b2c_leads").update({ address: context.address, updated_at: now }).eq("id", leadId);
+  }
+
+  // ─── 1. RECUPERAR HISTORIAL Y CONTEXTO ───
+  const history = await getConversationHistory(leadId);
+  console.log(`📖 [AGENT SESSION] LeadID: ${leadId} | Stage: ${context.currentStage} | History: ${history.length}`);
+
+  // ─── 2. PROCESAR MENSAJE ENTRANTE (IMAGENES / ARCHIVOS) ───
+  let fallbackText = "Aquí tiene la fotografía de mi superficie.";
+  if (incomingMsg.hasFile && incomingMsg.fileName) {
+    fallbackText = `He enviado un archivo adjunto llamado: ${incomingMsg.fileName}`;
+  }
+
+  const currentContent: any[] = [{ type: "text", text: incomingMsg.text || fallbackText }];
+
+  if (incomingMsg.hasPhoto && incomingMsg.photoUrl) {
+    try {
+      console.log(`[AGENT] Descargando imagen manualmente: ${incomingMsg.photoUrl}`);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
+      const res = await fetch(incomingMsg.photoUrl, { signal: controller.signal });
+      clearTimeout(timeoutId);
+      if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);
+      const imageBytes = new Uint8Array(await res.arrayBuffer());
+      currentContent.push({ type: "image", image: imageBytes });
+    } catch (err) {
+      console.error(`❌ [AGENT] Fallo descarga imagen, usando URL:`, err);
+      currentContent.push({ type: "image", image: incomingMsg.photoUrl });
+    }
+  }
+
+  const historyWithNew = [...history, { role: "user", content: currentContent }];
+  const prompt = buildSystemPrompt(context);
+
+  // ─── 3. LLAMADA AL MODELO IA ───
+  const result = await generateText({
+    model: openai("gpt-4o-mini"),
+    system: prompt,
+    messages: historyWithNew as any,
+  });
+
+  let text = result.text;
+  const pMatch = text.includes("[[GENERATE_QUOTE]]");
+  const wPhotoMatch = text.includes("[[WAIVE_PHOTO]]");
+
+  // ─── 4. ESTADO CONSOLIDADO (Auto-sense + IA Commands) ───
+  
+  // A. Medidas
+  const mMatch = text.match(/\[\[SET_MEASUREMENTS:\s*W:\s*([\d.]+)\s*,\s*H:\s*([\d.]+)\s*\]\]/i);
+  const userMeasures = extractMeasurementsFromText(incomingMsg.text);
+  if (mMatch) {
+    localW = parseFloat(mMatch[1]);
+    localH = parseFloat(mMatch[2]);
+  } else if (userMeasures) {
+    localW = userMeasures.w;
+    localH = userMeasures.h;
+  } else if (context.measurements) {
+    const fromCtx = extractMeasurementsFromText(context.measurements);
+    localW = fromCtx?.w || null;
+    localH = fromCtx?.h || null;
+  }
+  if (localW && localH) {
+    if (localW > 10) localW /= 100;
+    if (localH > 10) localH /= 100;
+    localM2 = Number((localW * localH).toFixed(2));
+  }
+
+  // B. Superficie
+  const sMatch = text.match(/\[\[SET_SURFACE:\s*(\w+)\s*(?:,\s*FULL:\s*(true|false))?\s*\]\]/i);
+  const userSurface = extractSurfaceFromText(incomingMsg.text);
   if (sMatch) {
     localSurfaceType = sMatch[1];
     isFullObject = sMatch[2]?.toLowerCase() === "true";
-
-    const { error: surfaceUpsertError } = await supabase
-      .from("b2c_surface_assessments")
-      .upsert(
-        {
-          lead_id: leadId,
-          surface_type: localSurfaceType,
-          is_full_object: isFullObject,
-          updated_at: now,
-        },
-        { onConflict: "lead_id" }
-      );
-
-    if (surfaceUpsertError) {
-      console.error("❌ [SURFACE] Error guardando superficie", {
-        leadId,
-        localSurfaceType,
-        isFullObject,
-        error: surfaceUpsertError,
-      });
-    }
-
-    // Status tracking: superficie seleccionada
-    await updateLeadStatus(leadId, "SURFACE_SELECTED");
+  } else if (userSurface) {
+    localSurfaceType = userSurface.type;
+    isFullObject = userSurface.full;
+  } else {
+    localSurfaceType = context.surfaceType || null;
+    isFullObject = context.isFullObject || false;
   }
 
-  const wPhotoMatch = text.match(/\[\[WAIVE_PHOTO\]\]/i);
-  if (wPhotoMatch) {
-    console.log(`📸 [PHOTO] Cliente indicó que no puede enviar foto. Marcando waived.`);
-    await supabase
-      .from("b2c_surface_assessments")
-      .upsert(
-        {
-          lead_id: leadId,
-          photo_waived: true,
-          updated_at: now,
-        },
-        { onConflict: "lead_id" }
-      );
+  // C. Instalación
+  const iMatch = text.match(/\[\[SET_INSTALLATION:\s*(true|false)\s*\]\]/i);
+  const userInstall = extractInstallFromText(incomingMsg.text);
+  if (iMatch) {
+    localInstall = iMatch[1].toLowerCase() === "true";
+  } else if (userInstall !== null) {
+    localInstall = userInstall;
+  } else {
+    localInstall = context.installationRequired ?? null;
   }
 
-  const pMatch = text.match(/\[\[SET_PRINT:\s*(\w+)\s*\]\]/i);
-  
-  // --- AUTO-SENSE SCENARIO (SOLO DEL MENSAJE DEL USUARIO) ---
-  // IMPORTANTE: No parsear el texto del asistente (assistant 'text') para auto-detección,
-  // ya que el asistente suele mencionar todas las opciones en sus preguntas,
-  // lo que generaba falsos positivos (ej: asumiendo CUSTOM_DESIGN porque el agente lo preguntó).
-  if (!localScenario) {
-    const userScenario = extractScenarioFromText(incomingMsg.text);
-    if (userScenario) {
-      localScenario = userScenario;
-      console.log(`🎨 [AUTO-SENSE User] Escenario detectado: ${localScenario}`);
-    }
+  // D. Escenario de Diseño
+  const pMatchSetPrint = text.match(/\[\[SET_PRINT:\s*(\w+)\s*\]\]/i);
+  const userScenario = extractScenarioFromText(incomingMsg.text);
+  if (pMatchSetPrint) {
+    localScenario = pMatchSetPrint[1];
+  } else if (userScenario) {
+    localScenario = userScenario;
+  } else {
+    localScenario = context.printFileScenario || null;
   }
-
-  // Los comandos explícitos del LLM [[SET_PRINT:...]] siempre tienen prioridad y se parsean del 'text'
-  if (pMatch) {
-    localScenario = pMatch[1];
-    console.log(`🎨 [IA COMMAND] Escenario seteado por comando: ${localScenario}`);
-  }
-
-  // Normalización defensiva de escenarios viejos/cortos
+  // Normalización
   if (localScenario === "C") localScenario = "CUSTOM_DESIGN";
   if (localScenario === "B") localScenario = "IMAGE_BANK";
   if (localScenario === "A") localScenario = "READY_FILE";
 
-  if (localScenario && localScenario !== context.printFileScenario) {
-    const { error: scenarioUpsertError } = await supabase
-      .from("b2c_quotes")
-      .upsert(
-        {
-          lead_id: leadId,
-          surface_type: localSurfaceType || "WALL",
-          width_meters: localW,
-          height_meters: localH,
-          square_meters: localM2,
-          print_file_scenario: localScenario,
-          updated_at: now,
-        },
-        { onConflict: "lead_id" }
-      );
+  // E. Contacto y Foto
+  const addrMatch = text.match(/\[\[SET_ADDRESS:(.*?)\]\]/i);
+  const phoneMatch = text.match(/\[\[SET_PHONE:(.*?)\]\]/i);
+  const autoContact = extractContactInfoFromText(incomingMsg.text);
+  
+  if (addrMatch) context.address = addrMatch[1].trim();
+  else if (autoContact.address) context.address = autoContact.address;
 
-    if (scenarioUpsertError) {
-      console.error("❌ [PRINT] Error guardando escenario de impresión", {
-        leadId,
-        localScenario,
-        error: scenarioUpsertError,
-      });
+  if (phoneMatch) context.phone = phoneMatch[1].trim();
+  else if (autoContact.phone) context.phone = autoContact.phone;
+
+  const autoWaive = /no (puedo|tengo|hay) foto|despu[eé]s te mando|luego mando/i.test(incomingMsg.text);
+  if (wPhotoMatch || autoWaive) context.photoWaived = true;
+
+  // ─── 5. PERSISTENCIA EN SUPABASE (Diferenciada) ───
+  if (localW && localH) {
+    await supabase.from("b2c_measurements").upsert({ lead_id: leadId, width_meters: localW, height_meters: localH, square_meters: localM2, updated_at: now }, { onConflict: "lead_id" });
+  }
+  if (localSurfaceType) {
+    await supabase.from("b2c_surface_assessments").upsert({ lead_id: leadId, surface_type: localSurfaceType, is_full_object: isFullObject, photo_waived: context.photoWaived, updated_at: now }, { onConflict: "lead_id" });
+  }
+  
+  // Persistencia de cotización parcial/completa
+  if (localScenario || localInstall !== null || localSurfaceType) {
+    const quoteUpdate: any = { 
+      lead_id: leadId, 
+      updated_at: now 
+    };
+    if (localSurfaceType) quoteUpdate.surface_type = localSurfaceType;
+    if (localScenario) quoteUpdate.print_file_scenario = localScenario;
+    if (localInstall !== null) quoteUpdate.installation_required = localInstall;
+
+    await supabase.from("b2c_quotes").upsert(quoteUpdate, { onConflict: "lead_id" });
+  }
+
+  if (context.address || context.phone) {
+    await supabase.from("b2c_leads").update({ address: context.address, phone: context.phone, updated_at: now }).eq("id", leadId);
+  }
+
+  // ─── 6. LÓGICA DE BLOQUEO / HANDOFF ───
+  
+  // Safety Net: Vehículo
+  if (localSurfaceType === "VEHICLE" && !text.includes("[[BLOCK:VEHICLE]]")) {
+    text = "[[BLOCK:VEHICLE]] " + text;
+  }
+
+  const blockMatch = text.match(/\[\[BLOCK:(\w+)\]\]/i);
+  if (blockMatch) {
+    const reasonMatch = text.match(/\[\[REASON:(.*?)\]\]/i);
+    let finalStage: LeadStage = "BLOCKED";
+    let defaultMessage = "La superficie no es apta. Alguien se contactará.";
+
+    if (blockMatch[1] === "VEHICLE") {
+      finalStage = "HUMAN_HANDOFF";
+      defaultMessage = "Los vehículos requieren revisión técnica. Alguien te contactará pronto.";
     }
 
-    // Status tracking: escenario seleccionado
-    await updateLeadStatus(leadId, "PRINT_FILE_SCENARIO_SELECTED");
-    
-    // HUMAN HANDOFF para CUSTOM_DESIGN - REMOVIDO para permitir cotizar sin diseño
-    if (localScenario === "CUSTOM_DESIGN") {
-      console.log(`👤 [HANDOFF] Diseño personalizado solicitado. Se avanzará para cotización parcial.`);
-    }
+    await updateLeadStatus(leadId, finalStage, reasonMatch?.[1]);
+    const cleanMsg = cleanAssistantText(text);
+    return {
+      messages: cleanMsg ? [cleanMsg] : [defaultMessage],
+      images: [],
+      documents: [],
+      newStage: finalStage,
+      requiresHumanReview: true,
+      rawText: text
+    };
   }
 
-  let localInstall: boolean | null = null;
-  const iMatch = text.match(/\[\[SET_INSTALL:\s*(true|false)\s*\]\]/i);
-  if (iMatch) {
-    localInstall = iMatch[1].toLowerCase() === "true";
-    
-    // Guardar instalación inmediatamente para evitar bucles de conversación
-    const { error: installUpsertError } = await supabase
-      .from("b2c_quotes")
-      .upsert(
-        {
-          lead_id: leadId,
-          surface_type: localSurfaceType || "WALL",
-          installation_required: localInstall,
-          updated_at: now,
-        },
-        { onConflict: "lead_id" }
-      );
-      
-    if (installUpsertError) {
-      console.error("❌ [INSTALL] Error guardando instalación", installUpsertError);
-    }
-    await updateLeadStatus(leadId, "INSTALLATION_SELECTED");
+  // ─── 7. QUOTE GATE (Safety Net Final) ───
+  // Note: Vehicle leads skip this and go to blockMatch above
+  const isPhotoValid = context.hasPhoto || context.photoWaived;
+  
+  const isFlowComplete = 
+    Boolean(localM2) && 
+    Boolean(localSurfaceType) && 
+    Boolean(localScenario) && 
+    localInstall !== null && 
+    isPhotoValid;
+    // La dirección y el teléfono ya no son bloqueantes para generar el presupuesto
+    // Pero se pedirán al final del mensaje si localInstall es true.
+
+  const quoteAlreadyDone = context.currentStage === "QUOTE_GENERATED" || context.currentStage === "CLOSED_WON";
+  const needsQuote = (pMatch || isFlowComplete) && !quoteAlreadyDone;
+
+  if (needsQuote && !text.includes("[[GENERATE_QUOTE]]")) {
+    console.log("⚡ [AUTO-QUOTE] Forzando generación por flujo completo.");
   }
 
-  // Auto-sense de instalación desde el texto del USUARIO (si no vino el tag)
-  if (localInstall === null) {
-    const installFromUser = extractInstallFromText(incomingMsg.text);
-    if (installFromUser !== null) {
-      localInstall = installFromUser;
-      console.log(`🔍 [AUTO-SENSE INSTALL user] "${incomingMsg.text}" → ${localInstall}`);
-    }
-  }
-
-  // Auto-sense de instalación desde el texto de RESPUESTA del LLM fue removido 
-  // porque generaba falsos positivos (parseaba sus propias preguntas como respuestas).
-  // Solo se usa el comando interno [[SET_INSTALL:true/false]].  // Si detectamos instalación en este turno pero no estaba en DB, la guardamos
-  if (localInstall !== null && context.installationRequired === null) {
-    const { error: installAutoSaveError } = await supabase
-      .from("b2c_quotes")
-      .upsert(
-        {
-          lead_id: leadId,
-          surface_type: localSurfaceType || context.surfaceType || "WALL",
-          installation_required: localInstall,
-          updated_at: now,
-        },
-        { onConflict: "lead_id" }
-      );
-    if (installAutoSaveError) {
-      console.error("❌ [INSTALL AUTO-SAVE]", installAutoSaveError);
-    } else {
-      console.log(`💾 [INSTALL AUTO-SAVED] ${localInstall} para lead ${leadId}`);
-    }
-  }
-
-  // --- PARSER DE DIRECCIÓN ---
-  const addrMatch = text.match(/\[\[SET_ADDRESS:\s*(.*?)\s*\]\]/i);
-  if (addrMatch) {
-    const newAddress = addrMatch[1].trim();
-    console.log(`🏠 [ADDRESS] Dirección detectada: ${newAddress}`);
-    await supabase
-      .from("b2c_leads")
-      .update({ address: newAddress, updated_at: now })
-      .eq("id", leadId);
-  }
-
-  // --- PARSER DE TELÉFONO ---
-  const phoneMatch = text.match(/\[\[SET_PHONE:\s*(.*?)\s*\]\]/i);
-  if (phoneMatch) {
-    const newPhone = phoneMatch[1].trim();
-    console.log(`📞 [PHONE] Teléfono detectado: ${newPhone}`);
-    await supabase
-      .from("b2c_leads")
-      .update({ phone: newPhone, updated_at: now })
-      .eq("id", leadId);
-  }
-
-  // --- PARSER DE SELECCIÓN DE IMAGEN DEL BANCO ---
-  // Este comando no afecta la lógica de flujo, pero se captura para persistir en el CRM
-  const imgSelectionMatch = text.match(/\[\[SET_IMAGE_SELECTION:\s*(.*?)\s*\]\]/i);
-  if (imgSelectionMatch) {
-    const selectionText = imgSelectionMatch[1].trim();
-    console.log(`🖼️ [IMAGE_SELECTION] El usuario eligió: ${selectionText}`);
-    // La persistencia real se hace en el webhook/route.ts al leer agentResponse.rawText
-  }
-
-  // ─── MERGE: siempre combinar valores del turno actual con el contexto persistido ───
-  // Esto evita que un dato respondido en un turno anterior sea ignorado en el siguiente.
-  if (localInstall === null && context.installationRequired !== null) {
-    localInstall = context.installationRequired;
-  }
-  if (!localScenario && context.printFileScenario) {
-    localScenario = context.printFileScenario;
-  }
-  if (!localSurfaceType && context.surfaceType) {
-    localSurfaceType = context.surfaceType;
-  }
-
-  // ═══════════════════════════════════════════════════════════════════════
-  // PARSER DE COTIZACIÓN
-  // ═══════════════════════════════════════════════════════════════════════
-
-  const isPhotoValid = context.hasPhoto || localSurfaceType === "VEHICLE" || context.photoWaived || Boolean(wPhotoMatch);
-
-  const hasAddress = Boolean(context.address || addrMatch);
-  const hasPhone = Boolean(context.phone || phoneMatch);
-
-  // Safety net: si el modelo tiene todos los datos pero olvidó emitir [[GENERATE_QUOTE]], lo forzamos.
-  // IMPORTANTE: usamos los valores YA MERGEADOS con el contexto (no solo los del turno actual).
-  // Esto evita el loop donde el agente pregunta datos que ya fueron respondidos en turnos anteriores.
-  const flowCompleteAutoTrigger =
-    Boolean(localM2) &&
-    Boolean(localSurfaceType) &&
-    localSurfaceType !== "VEHICLE" &&
-    Boolean(localScenario) &&
-    localInstall !== null &&
-    isPhotoValid &&
-    (!localInstall || (hasAddress && hasPhone));
-
-  const quoteAlreadyDone =
-    context.currentStage === "QUOTE_GENERATED" ||
-    context.currentStage === "CLOSED_WON" ||
-    context.currentStage === "CLOSED_LOST";
-
-  // needsQuote dispara cuando:
-  // 1. El LLM emitió [[GENERATE_QUOTE]] explícitamente — principal mecanismo
-  // 2. El flujo está completo (auto-trigger) — safety net si el LLM olvidó el comando
-  // NOTA: No se fuerza por detección de frases del LLM ("te mando el presupuesto", etc.)
-  // El LLM lee el historial completo de Redis y debe emitir [[GENERATE_QUOTE]] de forma natural.
-  const needsQuote =
-    text.includes("[[GENERATE_QUOTE]]") ||
-    (!quoteAlreadyDone && flowCompleteAutoTrigger);
-
-  if (flowCompleteAutoTrigger && !text.includes("[[GENERATE_QUOTE]]") && !quoteAlreadyDone) {
-    console.log(`⚡ [AUTO-QUOTE] Todos los datos completos. Forzando generación de cotización.`, {
-      localM2, localSurfaceType, localScenario, localInstall,
-    });
-  }
-  if (quoteAlreadyDone && !text.includes("[[GENERATE_QUOTE]]")) {
-    console.log(`🔒 [QUOTE-GUARD] Cotización ya existe (stage: ${context.currentStage}). Omitiendo re-generación.`);
-  }
-
-
-  // URL del PDF de presupuesto (se genera más adelante si aplica)
+  // ─── 8. GENERACIÓN DE COTIZACIÓN (SI APLICA) ───
+  // URL del PDF y outgoingImages
   let pdfUrl: string | null = null;
-
-  // Imágenes a enviar en este turno (guías o imágenes del banco)
   const outgoingImages: string[] = [];
 
-  // Si se acaba de elegir IMAGE_BANK, buscamos imágenes para enviar
+  // Especial para IMAGE_BANK
   if (localScenario === "IMAGE_BANK" && context.printFileScenario !== "IMAGE_BANK") {
-    // Preservemos cualquier comando [[...]] que el modelo haya emitido
-    const commands = text.match(/\[\[[^\]]+\]\]/g) || [];
-    const commandText = commands.length > 0 ? commands.join(" ") + " " : "";
-
-    // Inyectamos un mensaje fijo para derivar al catálogo web
-    text = commandText + "¡Perfecto! Podés ver nuestro catálogo completo de imágenes acá: https://pixel-art-agent.vercel.app/catalog\n\nCuando elijas una, avisame cuál te gustó. Tené en cuenta que la imagen va a ser recreada tal cual está en el banco de imágenes. Esto ya incluye una tarifa fija de diseño.";
+    text = cleanAssistantText(text) + "\n\n💡 Catálogo: https://pixel-art-agent.vercel.app/catalog";
   }
 
-  // ── READY_FILE: verificar si ya existe un archivo de diseño persistido ───────
-  // Si el escenario es READY_FILE pero el agente detectó que el usuario tiene un archivo,
-  // asegurarse de que el agente lo pida si no está guardado.
-  if (localScenario === "READY_FILE" && !incomingMsg.hasFile && !incomingMsg.hasPhoto) {
-    // Verificar si ya hay un archivo de diseño en la base de datos
-    const { data: existingAssets } = await supabase
-      .from("b2c_lead_assets")
-      .select("id")
-      .eq("lead_id", leadId)
-      .eq("asset_type", "DESIGN_FILE")
-      .limit(1);
-
-    const hasDesignFile = existingAssets && existingAssets.length > 0;
-
-    // Si no hay archivo guardado y el LLM no está ya pidiendo el archivo,
-    // inyectar mensaje para solicitarlo
-    if (!hasDesignFile && !/adjunt|mand[aá]|env[íi][ao]|subi[dó]|sube|compart[í]/i.test(text)) {
-      // Solo inyectar si el texto actual no es ya una solicitud del archivo
-      if (!/archivo|diseño|adjunto|pdf|png|jpg|jpeg|ai|eps|psd/i.test(text)) {
-        console.log(`📁 [READY_FILE] Escenario seleccionado pero sin archivo. Solicitando.`);
-        text = "¡Perfecto! Para avanzar necesito que me envíes el archivo de diseño. " +
-          "Puede ser en formato JPG, PNG, PDF, AI o EPS. Lo más importante es que tenga buena resolución para que la impresión quede perfecta.\n\n" +
-          "Enviá el archivo directamente por acá.";
-      }
-    }
-  }
-
-  // Enviar surface_guide SOLO si el agente está pidiendo la superficie, NO la tenemos,
-  // Y no fue enviada antes en esta sesión
+  // Guías de ayuda (inyección proactiva)
   const askingForSurface = !localSurfaceType && /superficie|pared|madera|vidrio|heladera|veh[íi]culo|donde|dónde/i.test(text);
   if (askingForSurface && !context.surfaceType && !context.surfaceGuideSent) {
     const surfaceGuideUrl = await getGuideImageUrl("surface");
     if (surfaceGuideUrl) {
-      console.log("🧩 [GUIDE] Agregando link de guía de superficie al texto.");
       text += `\n\n💡 Acá tenés una guía sobre las superficies: ${surfaceGuideUrl}`;
       context.surfaceGuideSent = true;
-      // Marcar en Redis para persistir el flag en la sesión
       await redis.set(`guide:surface:${leadId}`, "1", { ex: 90 * 60 });
     }
   }
 
-  // Enviar measure_guide cuando el agente pide medidas (hay superficie pero aún no hay medidas)
-  // Y no fue enviada antes en esta sesión
-  const askingForMeasures =
-    Boolean(localSurfaceType) &&
-    !localM2 &&
-    /medid|ancho|alto|cuánto|cuanto|mide|tama[ñn]o|dimension|largo|profundidad/i.test(text);
+  const askingForMeasures = Boolean(localSurfaceType) && !localM2 && /medid|ancho|alto|cuánto|cuanto|mide|tama[ñn]o|dimension|largo|profundidad/i.test(text);
   if (askingForMeasures && !context.measurements && !context.measureGuideSent) {
     const measureGuideUrl = await getGuideImageUrl("measure");
     if (measureGuideUrl) {
-      console.log("📏 [GUIDE] Agregando link de guía de medidas al texto.");
       text += `\n\n💡 Mirá esta guía para tomar las medidas correctamente: ${measureGuideUrl}`;
       context.measureGuideSent = true;
-      // Marcar en Redis para persistir el flag en la sesión
       await redis.set(`guide:measure:${leadId}`, "1", { ex: 90 * 60 });
     }
   }
@@ -805,90 +642,49 @@ export async function processAgentTurn(
     // Fallback final: si localM2 sigue null, usar lo que tenga el contexto
     if (!localM2 && context.squareMeters) {
       localM2 = context.squareMeters;
-      console.log(`📦 [QUOTE-GATE] Usando squareMeters del contexto: ${localM2} m²`);
     }
 
     const hasMeasurements = Boolean(localM2);
     const hasSurface = Boolean(localSurfaceType);
     const hasScenario = Boolean(localScenario);
     const hasInstall = localInstall !== null;
-    // isPhotoValid ya fue definida arriba
-
-    console.log("[QUOTE-GATE]", {
-      leadId,
-      hasMeasurements,
-      hasSurface,
-      hasScenario,
-      hasInstall,
-      localW,
-      localH,
-      localM2,
-      localSurfaceType,
-      localScenario,
-      localInstall,
-      contextSurfaceType: context.surfaceType,
-      contextPrintFileScenario: context.printFileScenario,
-      contextInstallationRequired: context.installationRequired,
-      pMatch: Boolean(pMatch),
-    });
-
-    const isFlowComplete = 
-      hasMeasurements && 
-      hasSurface && 
-      localSurfaceType !== "VEHICLE" &&
-      hasScenario && 
-      hasInstall && 
-      isPhotoValid &&
-      (!localInstall || (hasAddress && hasPhone));
 
     if (!hasMeasurements) {
-      console.warn("⚠️ [FALLBACK] No hay medidas para cotizar.", {
-        leadId,
-        contextSquareMeters: context.squareMeters,
-        contextMeasurements: context.measurements,
-      });
-
-      text =
-        "Antes de enviarte el presupuesto necesito confirmar las medidas exactas. ¿Podrías indicarme el ancho y el alto en metros?";
+      text = "Antes de enviarte el presupuesto necesito confirmar las medidas exactas. ¿Podrías indicarme el ancho y el alto en metros?";
     } else if (!isFlowComplete) {
-      console.warn("⚠️ [REVENT] Cotización bloqueada: flujo incompleto.", {
-        leadId,
-        missing: {
-          measurements: !hasMeasurements,
-          surface: !hasSurface,
-          scenario: !hasScenario,
-          install: !hasInstall,
-          photo: !isPhotoValid,
-        },
-        localM2,
-        localSurfaceType,
-        localScenario,
-        localInstall,
-      });
-
+      // Bloqueo por falta de datos básicos (no incluye contacto)
       if (!hasSurface) {
-        text =
-          "Antes de cotizar necesito confirmar sobre qué superficie va el vinilo. ¿Es pared, madera, vidrio, heladera, vehículo u otro objeto?";
+        text = "Antes de cotizar necesito confirmar sobre qué superficie va el vinilo. ¿Es pared, madera, vidrio, heladera, vehículo u otro objeto?";
       } else if (!hasScenario) {
-        text =
-          "Antes de enviarte el presupuesto necesito confirmar el diseño: ¿ya tenés el archivo listo, o te podemos ofrecer opciones de nuestro banco de imágenes, o preferís un diseño personalizado?";
+        text = "Antes de enviarte el presupuesto necesito confirmar el diseño: ¿ya tenés el archivo listo, o te podemos ofrecer opciones de nuestro banco de imágenes, o preferís un diseño personalizado?";
       } else if (!hasInstall) {
-        text =
-          "Antes de enviarte el presupuesto necesito confirmar la entrega: ¿vas a necesitar que nosotros nos encarguemos de la instalación o preferís retirarlo por nuestro local?";
+        text = "Antes de enviarte el presupuesto necesito confirmar la entrega: ¿vas a necesitar que nosotros nos encarguemos de la instalación o preferís retirarlo por nuestro local?";
       } else if (!isPhotoValid) {
-        text =
-          "Para asegurarme de que el vinilo va a quedar perfecto, ¿me podés mandar una foto de la superficie?";
-      } else if (localInstall && !hasAddress) {
-        text =
-          "Para coordinar la instalación necesito que me indiques la dirección exacta donde se realizaría el trabajo.";
-      } else if (localInstall && !hasPhone) {
-        text =
-          "Para coordinar la instalación necesito un número de teléfono de contacto.";
-      } else {
-        text =
-          "Antes de cotizar necesito confirmar un dato más del pedido para avanzar.";
+        text = "Para asegurarme de que el vinilo va a quedar perfecto, ¿me podés mandar una foto de la superficie?";
       }
     } else {
+      // TODO LISTO PARA COTIZAR
+      
+      // Caso especial: READY_FILE sin archivo
+      if (localScenario === "READY_FILE") {
+        const { data: existingAssets } = await supabase
+          .from("b2c_lead_assets")
+          .select("id")
+          .eq("lead_id", leadId)
+          .eq("asset_type", "DESIGN_FILE")
+          .limit(1);
+        
+        if (!existingAssets || existingAssets.length === 0) {
+          if (!/archivo|diseño|adjunto|pdf|png|jpg|jpeg|ai|eps|psd/i.test(text)) {
+            text = "¡Perfecto! Para avanzar necesito que me envíes el archivo de diseño.\n\n" +
+                   "Puede ser en formato JPG, PNG, PDF, AI o EPS. Enviámelo directamente por acá para que podamos verificar la calidad.";
+            // No retornamos aquí, permitimos que se genere el presupuesto igual si el usuario quiere, 
+            // pero el mensaje principal será este. O podemos inyectarlo al final.
+            // Para el "happy path", mejor inyectarlo y dejar que el presupuesto se genere.
+          }
+        }
+      }
+
       const quoteCalc = await calculateQuote({
         surfaceType: localSurfaceType as SurfaceType,
         squareMeters: localM2!,
@@ -910,40 +706,36 @@ export async function processAgentTurn(
       let wString = localW ? (localW < 1 ? `${localW * 100} cm` : `${localW} m`) : "";
       let hString = localH ? (localH < 1 ? `${localH * 100} cm` : `${localH} m`) : "";
 
-      const measureDetail =
-        localW && localH
-          ? `Ancho: ${wString} x Alto: ${hString}`
-          : `${localM2} m²`;
+      const measureDetail = localW && localH ? `Ancho: ${wString} x Alto: ${hString}` : `${localM2} m²`;
 
-      // IMPORTANTE: reemplazamos toda la respuesta del modelo por una salida limpia
       let textBreakdown = "";
       if (localScenario === "CUSTOM_DESIGN") {
-        // Diseño personalizado: sin precio, el equipo de arte evalúa
-        textBreakdown = 
-          `Tu pedido fue registrado. Te enviamos la información del mismo en un PDF.\n\n` +
+        textBreakdown = `Tu pedido fue registrado. Te enviamos la información del mismo en un PDF.\n\n` +
           `El diseño personalizado será evaluado por nuestro equipo de arte, quienes analizarán la viabilidad y te enviarán la cotización acorde a lo que buscás.\n\n` +
           `Alguien del equipo de arte se contactará a la brevedad por este mismo chat para avanzar.`;
       } else if (quoteCalc.requiresHumanReview) {
-        textBreakdown = 
-          `Aquí tenés tu presupuesto estimado. Te lo envío también como PDF para que lo puedas guardar.\n\n` +
+        textBreakdown = `Aquí tenés tu presupuesto estimado. Te lo envío también como PDF para que lo puedas guardar.\n\n` +
           `Dado el tamaño o las características del trabajo, nuestro equipo técnico revisará la viabilidad y confirmará el costo exacto${localInstall ? ' de instalación' : ''} antes de avanzar.\n\n` +
           `Alguien del equipo se contactará a la brevedad por este mismo chat.`;
       } else if (localScenario === "READY_FILE") {
-        textBreakdown = 
-          `Aquí tenés tu presupuesto estimado. Te lo envío también como PDF para que lo puedas guardar.\n\n` +
+        textBreakdown = `Aquí tenés tu presupuesto estimado. Te lo envío también como PDF para que lo puedas guardar.\n\n` +
           `El total de tu pedido ${localInstall ? 'con instalación incluida' : 'retirando por el local'} es de **$${total.toLocaleString("es-UY")} ${quoteCalc.currency}**.\n\n` +
-          `Alguien de nuestro equipo se contactará para analizar la resolución del archivo que nos enviaste y confirmar que es apto para imprimir en ese tamaño.\n\n` +
+          `Alguien de nuestro equipo se contactará para analizar la resolución del archivo y confirmar que es apto para imprimir.\n\n` +
           `¿Te parece bien para avanzar?`;
       } else {
-        textBreakdown = 
-          `Aquí tenés tu presupuesto estimado. Te lo envío también como PDF para que lo puedas guardar.\n\n` +
+        textBreakdown = `Aquí tenés tu presupuesto estimado. Te lo envío también como PDF para que lo puedas guardar.\n\n` +
           `El total de tu pedido ${localInstall ? 'con instalación incluida' : 'retirando por el local'} es de **$${total.toLocaleString("es-UY")} ${quoteCalc.currency}**.\n\n` +
           `¿Te parece bien para avanzar con el pago y comenzar con el diseño?`;
       }
 
+      // Si pide instalación pero no hay contacto, lo pedimos al final
+      if (localInstall && (!context.address || !context.phone)) {
+        textBreakdown += "\n\nPara coordinar la instalación, ¿me podrías pasar tu dirección y un teléfono de contacto?";
+      }
+
       text = textBreakdown;
 
-      // Generar y subir PDF del presupuesto
+      // Generar y subir PDF
       try {
         const pdfBuffer = await generateQuotePDF({
           customerName: context.customerName,
@@ -960,52 +752,28 @@ export async function processAgentTurn(
           orderNumber: context.orderNumber || undefined,
         });
 
-        const { url, error: pdfUploadError } = await uploadAsset(
-          leadId,
-          `presupuesto_${Date.now()}.pdf`,
-          pdfBuffer,
-          "application/pdf"
-        );
-
-        if (pdfUploadError) {
-          console.error("❌ [PDF] Error subiendo PDF:", pdfUploadError);
-        } else {
+        const { url, error: pdfUploadError } = await uploadAsset(leadId, `presupuesto_${Date.now()}.pdf`, pdfBuffer, "application/pdf");
+        if (!pdfUploadError) {
           pdfUrl = url;
-          console.log(`📄 [PDF] Generado y subido: ${pdfUrl}`);
         }
       } catch (pdfError) {
-        console.error("❌ [PDF] Error generando PDF (fallo silencioso):", pdfError);
+        console.error("❌ [PDF] Error:", pdfError);
       }
 
-      const { error: quoteUpsertError } = await supabase
-        .from("b2c_quotes")
-        .upsert(
-          {
-            lead_id: leadId,
-            surface_type: localSurfaceType,
-            square_meters: localM2,
-            print_file_scenario: localScenario,
-            installation_required: localInstall ?? true,
-            estimated_base_price: quoteCalc.estimatedBasePrice,
-            estimated_install_price: quoteCalc.estimatedInstallPrice,
-            estimated_extra_price: quoteCalc.estimatedExtraPrice,
-            estimated_total: total,
-            requires_human_review: quoteCalc.requiresHumanReview,
-            updated_at: now,
-          },
-          { onConflict: "lead_id" }
-        );
+      await supabase.from("b2c_quotes").upsert({
+        lead_id: leadId,
+        surface_type: localSurfaceType,
+        square_meters: localM2,
+        print_file_scenario: localScenario,
+        installation_required: localInstall,
+        estimated_base_price: quoteCalc.estimatedBasePrice,
+        estimated_install_price: quoteCalc.estimatedInstallPrice,
+        estimated_extra_price: quoteCalc.estimatedExtraPrice,
+        estimated_total: total,
+        requires_human_review: quoteCalc.requiresHumanReview,
+        updated_at: now,
+      }, { onConflict: "lead_id" });
 
-      if (quoteUpsertError) {
-        console.error("❌ [QUOTE] Error guardando cotización", {
-          leadId,
-          total,
-          localScenario,
-          error: quoteUpsertError,
-        });
-      }
-
-      // Status tracking: cotización generada
       await updateLeadStatus(leadId, "QUOTE_GENERATED");
     }
   }
@@ -1023,6 +791,8 @@ export async function processAgentTurn(
   finalCleanup = finalCleanup
     .replace(/\[([^\]]+)\]\((?!https?:\/\/(?:pixel-art-agent\.vercel\.app|jkehckvkxigxwmkuunvc\.supabase\.co))[^)]+\)/g, "$1") 
     .replace(/https?:\/\/(?!pixel-art-agent\.vercel\.app|jkehckvkxigxwmkuunvc\.supabase\.co)[^\s]+/g, ""); 
+
+  console.log("Cleaned text:", finalCleanup);
 
   const messages = finalCleanup
     .split(/\s*---\s*/)

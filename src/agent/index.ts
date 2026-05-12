@@ -418,10 +418,15 @@ export async function processAgentTurn(
   } else {
     localScenario = context.printFileScenario || null;
   }
-  // Normalización
+  // Normalización (solo nombres completos para evitar falsos positivos con letras sueltas)
   if (localScenario === "C") localScenario = "CUSTOM_DESIGN";
   if (localScenario === "B") localScenario = "IMAGE_BANK";
   if (localScenario === "A") localScenario = "READY_FILE";
+  
+  // Si el escenario es IMAGE_BANK, nos aseguramos de que esté normalizado
+  if (localScenario?.toUpperCase().includes("IMAGE_BANK")) {
+    localScenario = "IMAGE_BANK";
+  }
 
   // E. Contacto y Foto
   const addrMatch = text.match(/\[\[SET_ADDRESS:(.*?)\]\]/i);
@@ -686,11 +691,9 @@ export async function processAgentTurn(
 
   let finalCleanup = cleanAssistantText(text);
   
-  // Limpiar cualquier link markdown [texto](url) o http crudo que el modelo haya alucinado
-  // Convertimos links markdown a texto plano: [texto](url) -> texto
+  // Limpiar CUALQUIER link que el modelo haya alucinado (whitelist estricta)
   finalCleanup = finalCleanup
     .replace(/\[([^\]]+)\]\((?!https?:\/\/jkehckvkxigxwmkuunvc\.supabase\.co)[^)]+\)/g, "$1") 
-    // Removemos URLs crudas excepto las oficiales de Supabase (para PDFs) y el catálogo (aunque ya lo manejamos arriba)
     .replace(/https?:\/\/(?!pixel-art-agent\.vercel\.app|jkehckvkxigxwmkuunvc\.supabase\.co)[^\s]+/g, ""); 
 
   console.log("Cleaned text:", finalCleanup);
@@ -700,21 +703,28 @@ export async function processAgentTurn(
     .map((m) => m.trim())
     .filter((m) => m.length > 0);
 
+  const processedMessages: string[] = [];
+  for (let i = 0; i < messages.length; i++) {
+    let m = messages[i];
+    // Inyectar catálogo SOLO en el último mensaje de la tanda, SOLO si es IMAGE_BANK y SOLO si no se envió antes
+    if (i === messages.length - 1 && localScenario === "IMAGE_BANK" && !context.catalogGuideSent) {
+      const catalogUrl = "https://pixel-art-agent.vercel.app/catalog";
+      m += `\n\nCatálogo: ${catalogUrl}`;
+      
+      // Persistir el flag de envío para que no se repita en el futuro
+      context.catalogGuideSent = true;
+      try {
+        await redis.set(`guide:catalog:${leadId}`, "1", { ex: 90 * 60 });
+        console.log(`✅ [CATALOG] Flag persistido para lead ${leadId}`);
+      } catch (redisErr) {
+        console.error("❌ [REDIS] Error persistiendo flag de catálogo:", redisErr);
+      }
+    }
+    processedMessages.push(m);
+  }
+
   return {
-    messages:
-      messages.length > 0
-        ? messages.map((m, i) => {
-            // Inyectar catálogo en el último mensaje si corresponde
-            if (i === messages.length - 1 && localScenario === "IMAGE_BANK" && !context.catalogGuideSent) {
-              const catalogUrl = "https://pixel-art-agent.vercel.app/catalog";
-              // Marcamos como enviado y persistimos
-              context.catalogGuideSent = true;
-              redis.set(`guide:catalog:${leadId}`, "1", { ex: 90 * 60 }).catch(e => console.error("Redis Error:", e));
-              return m + `\n\nCatálogo: ${catalogUrl}`;
-            }
-            return m;
-          })
-        : ["He registrado los datos. ¿Cómo desea proceder?"],
+    messages: processedMessages.length > 0 ? processedMessages : ["He registrado los datos. ¿Cómo desea proceder?"],
     images: outgoingImages,
     documents: pdfUrl ? [pdfUrl] : [],
     newStage: "STAY",

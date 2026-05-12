@@ -262,21 +262,30 @@ Si el área estimada supera los 3 m²:
 - Informa que se requiere visita técnica obligatoria de validación.
 - Puede seguir reuniendo datos del pedido.`
     }
-
+    
 #### PASO 4: DISEÑO
 ${context.printFileScenario
       ? `COMPLETADO — Diseño: ${context.printFileScenario}. Salta este paso.`
-      : `Cuando ya tengas superficie apta y medidas, consulta el tipo de diseño.
+      : `Cuando ya tengas superficie apta y medidas, consulta el tipo de diseño con una frase natural.
 
-Usa una frase natural como:
-"¿Ya tenés el archivo listo, o te podemos ofrecer opciones de nuestro banco de imágenes, o preferís un diseño personalizado?"
+### REGLA DE DISPARO INMEDIATO (CRÍTICO)
+Tan pronto como el cliente elija una ruta, DEBES emitir el comando en esa MISMA respuesta. No esperes a ver el archivo o elegir la imagen.
 
-REGLA CRÍTICA PARA EL DISEÑO: Tan pronto como el cliente indique su PREFERENCIA de ruta de diseño (ej. quiere ver el catálogo, o quiere un diseño propio, o ya tiene el archivo), DEBES emitir INMEDIATAMENTE Y SIN EXCEPCIÓN el comando correspondiente EN LA MISMA RESPUESTA. NO ESPERES a definir la imagen o el estilo final. ¡ES OBLIGATORIO EMITIR EL COMANDO AHORA! INCLUSO SI EL CLIENTE SOLO PIDE VER OPCIONES, DEBES EMITIR [[SET_PRINT:IMAGE_BANK]] en esa mismísima respuesta. ¡NUNCA ACUMULES LOS TAGS PARA MÁS ADELANTE!
+Emite según la elección:
 
-Emite internamente (DEBES INCLUIR UNO DE ESTOS TEXTOS EXACTOS EN TU RESPUESTA O EL FLUJO FALLARÁ):
-- [[SET_PRINT:READY_FILE]] → cliente tiene archivo listo para imprimir
-- [[SET_PRINT:IMAGE_BANK]] → cliente pide ver el catálogo o banco de imágenes
-- [[SET_PRINT:CUSTOM_DESIGN]] → cliente pide diseño personalizado o idea nueva`
+1. **BANCO DE IMÁGENES:** [[SET_PRINT:IMAGE_BANK]]
+   - Acción: Informa que le envías el catálogo (el sistema inyecta el link solo).
+   - Regla: Se envía UNA SOLA VEZ. No lo vuelvas a ofrecer en mensajes posteriores si ya figura como COMPLETO.
+
+2. **ARCHIVO PROPIO:** [[SET_PRINT:READY_FILE]]
+   - Acción: Pide el archivo e informa que aceptamos PDF, PNG o JPG de alta calidad. 
+   - Validación: Si menciona el archivo, pídelo amablemente para que el equipo técnico lo valide.
+
+3. **DISEÑO PERSONALIZADO:** [[SET_PRINT:CUSTOM_DESIGN]]
+   - Acción: Informa que el equipo de arte se encargará de realizar el diseño personalizado (costo extra $1500) una vez confirmado el pedido.
+
+Pregunta de ejemplo:
+"¿Ya tenés el archivo listo para imprimir, o preferís ver nuestro catálogo de imágenes, o necesitás que hagamos un diseño personalizado?"`
     }
 
 #### PASO 5: INSTALACIÓN O RETIRO

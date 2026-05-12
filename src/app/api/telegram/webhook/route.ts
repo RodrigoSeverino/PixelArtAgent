@@ -407,6 +407,7 @@ async function buildLeadContext(
     surfaceGuideSent: false,
     measureGuideSent: false,
     photoWaived: false,
+    catalogGuideSent: false,
   };
 
   try {
@@ -476,12 +477,14 @@ async function buildLeadContext(
       }
     }
     // Traer flags de imágenes de guía desde Redis
-    const [surfaceFlag, measureFlag] = await Promise.all([
+    const [surfaceFlag, measureFlag, catalogFlag] = await Promise.all([
       redis.get(`guide:surface:${leadId}`),
       redis.get(`guide:measure:${leadId}`),
+      redis.get(`guide:catalog:${leadId}`),
     ]);
     context.surfaceGuideSent = surfaceFlag === "1";
     context.measureGuideSent = measureFlag === "1";
+    context.catalogGuideSent = catalogFlag === "1";
   } catch (err) {
     console.error("⚠️ [WARNING] Error al construir el contexto:", err);
   }

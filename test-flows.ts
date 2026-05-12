@@ -3,7 +3,7 @@ config({ path: ".env.local" });
 import { createClient } from "@supabase/supabase-js";
 
 async function start() {
-  const { processAgentTurn } = await import("./src/agent/index.ts");
+  const { processAgentTurn } = await import("./src/agent/index");
   
   // Mocking some values for test
   const supabase = createClient(
@@ -83,6 +83,7 @@ async function start() {
         surfaceGuideSent: false,
         measureGuideSent: false,
         photoWaived: !!surface?.photo_waived,
+        catalogGuideSent: false,
       };
 
       const isSubirFoto = msg === "SUBIR_FOTO";

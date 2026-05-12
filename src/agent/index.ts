@@ -123,30 +123,7 @@ function extractSurfaceFromText(text: string): { type: string; full: boolean } |
   return null;
 }
 
-function extractScenarioFromText(text: string): PrintFileScenario | null {
-  const t = text.toLowerCase();
-  // READY_FILE
-  if (t.includes("mi archivo") || t.includes("mi diseño") || t.includes("mi diseno") || 
-      t.includes("ya tengo") || t.includes("ya lo tengo") || t.includes("tengo el archivo") ||
-      t.includes("te paso el archivo") || t.includes("te mando el archivo") ||
-      t.includes("archivo listo") || t.includes("listo para imprimir") ||
-      t.includes("lo tengo en pdf") || t.includes("lo tengo en illustrator") ||
-      t.includes("tengo un logo") || t.includes("tengo una imagen")) return "READY_FILE";
-  
-  // IMAGE_BANK
-  if (t.includes("banco") || t.includes("galería") || t.includes("galeria") || 
-      t.includes("catálogo") || t.includes("catalogo") || t.includes("elijan ustedes") ||
-      t.includes("una foto de ustedes") || t.includes("alguna imagen suya") ||
-      t.includes("qué opciones tienen") || t.includes("modelos que tengan")) return "IMAGE_BANK";
-  
-  // CUSTOM_DESIGN
-  if (t.includes("personalizado") || t.includes("hacer uno") || t.includes("diseñen") || 
-      t.includes("disenen") || t.includes("hagan un diseño") || t.includes("crear un diseño") ||
-      t.includes("mandala") || t.includes("diseño a medida") || t.includes("diseno a medida") ||
-      t.includes("algo especial") || t.includes("idea que tengo")) return "CUSTOM_DESIGN";
-  
-  return null;
-}
+// extractScenarioFromText removed.
 
 /**
  * Intenta extraer teléfono y dirección del texto.
@@ -188,41 +165,6 @@ function extractContactInfoFromText(text: string): { phone?: string; address?: s
   return res;
 }
 
-/**
- * Detecta si el cliente quiere instalación (true) o retiro en local (false)
- * a partir de texto en lenguaje natural — tanto del usuario como del LLM.
- * Retorna null si no se puede determinar.
- */
-function extractInstallFromText(text: string): boolean | null {
-  if (!text) return null;
-  const t = text.toLowerCase();
-
-  // ── Retiro en local (instalación = false) ──
-  const pickupPatterns = [
-    "retiro", "retira", "lo busco", "paso a buscar", "paso a retir",
-    "voy a buscar", "busco yo", "buscar yo", "lo voy a buscar",
-    "retirarlo", "retiro en local", "retiro por local", "retiro en el local",
-    "lo retiro", "lo busco", "lo paso a buscar", "me lo llevo",
-    "sin instalación", "sin instalacion", "sin colocación", "sin colocacion",
-    "no necesito instalación", "no necesito instalacion",
-    "no necesito que instalen", "no quiero instalación",
-  ];
-
-  // ── Con instalación (instalación = true) ──
-  const installPatterns = [
-    "instalación", "instalacion", "instalen", "instalar",
-    "que vengan", "vengan a colocar", "colocación", "colocacion",
-    "que lo pongan", "que lo instalen", "necesito instalación",
-    "con instalación", "con colocación", "quiero instalación",
-    "lo coloquen", "que lo coloquen",
-  ];
-
-  // Evaluar primero patrones de retiro (son más específicos)
-  if (pickupPatterns.some((p) => t.includes(p))) return false;
-  if (installPatterns.some((p) => t.includes(p))) return true;
-
-  return null;
-}
 
 function cleanAssistantText(text: string): string {
   return text
@@ -235,6 +177,8 @@ function cleanAssistantText(text: string): string {
     .replace(/\(monto generado en el sistema\)/gi, "")
     .replace(/\[monto generado en el sistema\]/gi, "")
     .replace(/monto generado en el sistema/gi, "")
+    // Remueve emojis (caracteres no-ASCII o rangos específicos de emojis)
+    .replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F1E6}-\u{1F1FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{1F900}-\u{1F9FF}\u{1F018}-\u{1F093}\u{1F191}-\u{1F251}\u{1F004}\u{1F170}-\u{1F171}\u{1F17E}-\u{1F17F}\u{1F18E}\u{3030}\u{2B50}\u{2B55}\u{2934}-\u{2935}\u{2B05}-\u{2B07}\u{2194}-\u{2199}\u{21A9}-\u{21AA}\u{3297}\u{3299}\u{303D}\u{1F201}-\u{1F202}\u{1F21A}\u{1F22F}\u{1F232}-\u{1F23A}\u{1F250}-\u{1F251}\u{1F300}-\u{1F320}\u{1F32D}-\u{1F335}\u{1F337}-\u{1F37C}\u{1F37E}-\u{1F393}\u{1F3A0}-\u{1F3C4}\u{1F3C6}-\u{1F3CA}\u{1F3E0}-\u{1F3F0}\u{1F400}-\u{1F43E}\u{1F440}\u{1F442}-\u{1F4F7}\u{1F4F9}-\u{1F4FC}\u{1F500}-\u{1F53D}\u{1F550}-\u{1F567}\u{1F5FB}-\u{1F640}\u{1F645}-\u{1F64F}\u{1F680}-\u{1F6C0}\u{1F6CC}\u{1F6D0}-\u{1F6D2}\u{1F6EB}-\u{1F6EC}\u{1F6F4}-\u{1F6F6}\u{1F6F7}-\u{1F6F8}\u{1F6F9}-\u{1F6FA}\u{1F7E0}-\u{1F7EB}\u{1F90D}-\u{1F971}\u{1F973}-\u{1F976}\u{1F97A}-\u{1F9A2}\u{1F9A5}-\u{1F9AA}\u{1F9AE}-\u{1F9AF}\u{1F9B0}-\u{1F9B9}\u{1F9BC}-\u{1F9FF}\u{1FA70}-\u{1FA73}\u{1FA78}-\u{1FA7A}\u{1FA80}-\u{1FA82}\u{1FA90}-\u{1FA95}]/gu, "")
     .trim();
 }
 
@@ -361,44 +305,11 @@ export async function processAgentTurn(
   }
 
   let localScenario = context.printFileScenario ?? null;
-  const userScenario = extractScenarioFromText(incomingMsg.text);
-  if (userScenario) {
-    localScenario = userScenario;
-    console.log(`🎨 [AUTO-SENSE PRE-IA] Escenario detectado: ${localScenario}`);
-    // Actualizamos el contexto para el prompt
-    context.printFileScenario = localScenario;
-    
-    // Status tracking: escenario seleccionado
-    if (context.currentStage === "MEASUREMENTS_RECEIVED" || context.currentStage === "SURFACE_SELECTED") {
-       await updateLeadStatus(leadId, "PRINT_FILE_SCENARIO_SELECTED");
-       context.currentStage = "PRINT_FILE_SCENARIO_SELECTED";
-    }
-  }
+  // Scenario auto-detection removed to avoid false positives. 
+  // We rely on LLM commands [[SET_PRINT:...]] for better accuracy.
 
   // --- AUTO-SENSE EXTRA (SCENARIO & INSTALLATION) ---
-  const isInstallation = /instalación|instalacion|instalar|coloquen|colocacion|vengan a casa/i.test(incomingMsg.text);
-  const isRetiro = /retiro|paso a buscar|local|voy yo/i.test(incomingMsg.text);
-  const isReadyFile = /ya tengo el diseño|listo para imprimir|tengo el archivo|tengo el pdf/i.test(incomingMsg.text);
-  const isCustomDesign = /diseño personalizado|haganmelo ustedes|quiero que lo diseñen/i.test(incomingMsg.text);
-  const isImageBank = /catalogo|banco de imagenes|ver opciones|fotos de ustedes/i.test(incomingMsg.text);
-
-  let localInstall = context.installationRequired;
-  if (isInstallation) localInstall = true;
-  if (isRetiro) localInstall = false;
-
-  if (localInstall !== context.installationRequired && localInstall !== null) {
-     context.installationRequired = localInstall;
-     await supabase.from("b2c_quotes").upsert({ lead_id: leadId, installation_required: localInstall, updated_at: now }, { onConflict: "lead_id" });
-  }
-
-  if (isReadyFile) localScenario = "READY_FILE";
-  if (isCustomDesign) localScenario = "CUSTOM_DESIGN";
-  if (isImageBank) localScenario = "IMAGE_BANK";
-
-  if (localScenario !== context.printFileScenario && localScenario !== null) {
-     context.printFileScenario = localScenario;
-     await supabase.from("b2c_quotes").upsert({ lead_id: leadId, print_file_scenario: localScenario, updated_at: now }, { onConflict: "lead_id" });
-  }
+  // Manual installation/scenario overrides removed to favor LLM intent detection.
 
   // --- AUTO-SENSE CONTACT DATA ---
   const phoneDetected = incomingMsg.text.match(/\+?\d{7,15}/);
@@ -460,7 +371,7 @@ export async function processAgentTurn(
   
   // A. Medidas
   const mMatch = text.match(/\[\[SET_MEASUREMENTS:\s*W:\s*([\d.]+)\s*,\s*H:\s*([\d.]+)\s*\]\]/i);
-  const userMeasures = extractMeasurementsFromText(incomingMsg.text);
+  // userMeasures ya fue extraído al inicio
   if (mMatch) {
     localW = parseFloat(mMatch[1]);
     localH = parseFloat(mMatch[2]);
@@ -480,7 +391,7 @@ export async function processAgentTurn(
 
   // B. Superficie
   const sMatch = text.match(/\[\[SET_SURFACE:\s*(\w+)\s*(?:,\s*FULL:\s*(true|false))?\s*\]\]/i);
-  const userSurface = extractSurfaceFromText(incomingMsg.text);
+  // userSurface ya fue extraído al inicio
   if (sMatch) {
     localSurfaceType = sMatch[1];
     isFullObject = sMatch[2]?.toLowerCase() === "true";
@@ -494,22 +405,16 @@ export async function processAgentTurn(
 
   // C. Instalación
   const iMatch = text.match(/\[\[SET_INSTALLATION:\s*(true|false)\s*\]\]/i);
-  const userInstall = extractInstallFromText(incomingMsg.text);
   if (iMatch) {
     localInstall = iMatch[1].toLowerCase() === "true";
-  } else if (userInstall !== null) {
-    localInstall = userInstall;
   } else {
     localInstall = context.installationRequired ?? null;
   }
 
   // D. Escenario de Diseño
   const pMatchSetPrint = text.match(/\[\[SET_PRINT:\s*(\w+)\s*\]\]/i);
-  const userScenario = extractScenarioFromText(incomingMsg.text);
   if (pMatchSetPrint) {
     localScenario = pMatchSetPrint[1];
-  } else if (userScenario) {
-    localScenario = userScenario;
   } else {
     localScenario = context.printFileScenario || null;
   }
@@ -612,17 +517,12 @@ export async function processAgentTurn(
   let pdfUrl: string | null = null;
   const outgoingImages: string[] = [];
 
-  // Especial para IMAGE_BANK
-  if (localScenario === "IMAGE_BANK" && context.printFileScenario !== "IMAGE_BANK") {
-    text = cleanAssistantText(text) + "\n\n💡 Catálogo: https://pixel-art-agent.vercel.app/catalog";
-  }
-
   // Guías de ayuda (inyección proactiva)
   const askingForSurface = !localSurfaceType && /superficie|pared|madera|vidrio|heladera|veh[íi]culo|donde|dónde/i.test(text);
   if (askingForSurface && !context.surfaceType && !context.surfaceGuideSent) {
     const surfaceGuideUrl = await getGuideImageUrl("surface");
     if (surfaceGuideUrl) {
-      text += `\n\n💡 Acá tenés una guía sobre las superficies: ${surfaceGuideUrl}`;
+      text += `\n\nAcá tenés una guía sobre las superficies: ${surfaceGuideUrl}`;
       context.surfaceGuideSent = true;
       await redis.set(`guide:surface:${leadId}`, "1", { ex: 90 * 60 });
     }
@@ -632,7 +532,7 @@ export async function processAgentTurn(
   if (askingForMeasures && !context.measurements && !context.measureGuideSent) {
     const measureGuideUrl = await getGuideImageUrl("measure");
     if (measureGuideUrl) {
-      text += `\n\n💡 Mirá esta guía para tomar las medidas correctamente: ${measureGuideUrl}`;
+      text += `\n\nMirá esta guía para tomar las medidas correctamente: ${measureGuideUrl}`;
       context.measureGuideSent = true;
       await redis.set(`guide:measure:${leadId}`, "1", { ex: 90 * 60 });
     }
@@ -787,9 +687,10 @@ export async function processAgentTurn(
   let finalCleanup = cleanAssistantText(text);
   
   // Limpiar cualquier link markdown [texto](url) o http crudo que el modelo haya alucinado
-  // PERO permitir el link del catálogo oficial (pixel-art-agent.vercel.app)
+  // Convertimos links markdown a texto plano: [texto](url) -> texto
   finalCleanup = finalCleanup
-    .replace(/\[([^\]]+)\]\((?!https?:\/\/(?:pixel-art-agent\.vercel\.app|jkehckvkxigxwmkuunvc\.supabase\.co))[^)]+\)/g, "$1") 
+    .replace(/\[([^\]]+)\]\((?!https?:\/\/jkehckvkxigxwmkuunvc\.supabase\.co)[^)]+\)/g, "$1") 
+    // Removemos URLs crudas excepto las oficiales de Supabase (para PDFs) y el catálogo (aunque ya lo manejamos arriba)
     .replace(/https?:\/\/(?!pixel-art-agent\.vercel\.app|jkehckvkxigxwmkuunvc\.supabase\.co)[^\s]+/g, ""); 
 
   console.log("Cleaned text:", finalCleanup);
@@ -802,7 +703,17 @@ export async function processAgentTurn(
   return {
     messages:
       messages.length > 0
-        ? messages
+        ? messages.map((m, i) => {
+            // Inyectar catálogo en el último mensaje si corresponde
+            if (i === messages.length - 1 && localScenario === "IMAGE_BANK" && !context.catalogGuideSent) {
+              const catalogUrl = "https://pixel-art-agent.vercel.app/catalog";
+              // Marcamos como enviado y persistimos
+              context.catalogGuideSent = true;
+              redis.set(`guide:catalog:${leadId}`, "1", { ex: 90 * 60 }).catch(e => console.error("Redis Error:", e));
+              return m + `\n\nCatálogo: ${catalogUrl}`;
+            }
+            return m;
+          })
         : ["He registrado los datos. ¿Cómo desea proceder?"],
     images: outgoingImages,
     documents: pdfUrl ? [pdfUrl] : [],

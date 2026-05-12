@@ -1,0 +1,366 @@
+
+======================================================
+🚀 INICIANDO PRUEBA: 1. Superficie con humedad (Handoff)
+======================================================
+
+
+---------------------------------
+💬 USUARIO (Msg 1): "Hola, quiero plotear una pared"
+---------------------------------
+DEBUG DATA - Surface: false, Measures: false, Quote: false
+🏠 [AUTO-SENSE PRE-IA] Superficie detectada: WALL (Full: false)
+📊 [STATUS] Lead 46ff3a2b-35aa-4175-a688-2e5e4896cfc4 → SURFACE_SELECTED
+📖 [AGENT SESSION]
+    LeadID: 46ff3a2b-35aa-4175-a688-2e5e4896cfc4
+    Stage: SURFACE_SELECTED
+    History: 1 msgs
+    Has Quote: false
+  
+🤖 [IA RESPONSE] Turno para lead 46ff3a2b-35aa-4175-a688-2e5e4896cfc4: "Para asegurarme de que el vinilo va a quedar perfecto, ¿me podés mandar una foto de la superficie?"
+Cleaned text: Para asegurarme de que el vinilo va a quedar perfecto, ¿me podés mandar una foto de la superficie?
+🤖 AGENTE RESPUESTAS:
+  ➤ Para asegurarme de que el vinilo va a quedar perfecto, ¿me podés mandar una foto de la superficie?
+
+---------------------------------
+💬 USUARIO (Msg 2): "La pared tiene humedad y se está descascarando un poco"
+---------------------------------
+DEBUG DATA - Surface: true, Measures: false, Quote: false
+🏠 [AUTO-SENSE PRE-IA] Superficie detectada: WALL (Full: false)
+📖 [AGENT SESSION]
+    LeadID: 46ff3a2b-35aa-4175-a688-2e5e4896cfc4
+    Stage: SURFACE_SELECTED
+    History: 3 msgs
+    Has Quote: false
+  
+🤖 [IA RESPONSE] Turno para lead 46ff3a2b-35aa-4175-a688-2e5e4896cfc4: "Lamentablemente la superficie no está en condiciones óptimas para el trabajo, ya que con humedad o daño el vinilo no se adhiere bien. Alguien de nuestro equipo se contactará a la brevedad para asesorarte cómo seguir."
+🚫 [BLOCK] Bloqueo detectado: SURFACE_DAMAGE. Razón: No especificada
+📊 [STATUS] Lead 46ff3a2b-35aa-4175-a688-2e5e4896cfc4 → BLOCKED
+🤖 AGENTE RESPUESTAS:
+  ➤ Lamentablemente la superficie no está en condiciones óptimas para el trabajo, ya que con humedad o daño el vinilo no se adhiere bien. Alguien de nuestro equipo se contactará a la brevedad para asesorarte cómo seguir.
+
+📊 ESTADO FINAL DEL LEAD:
+Stage: BLOCKED
+✅ PRUEBA EXITOSA (Esperaba BLOCKED)
+======================================================
+
+
+======================================================
+🚀 INICIANDO PRUEBA: 2. Vehículo (HUMAN_HANDOFF)
+======================================================
+
+
+---------------------------------
+💬 USUARIO (Msg 1): "Hola, quiero plotear mi auto"
+---------------------------------
+DEBUG DATA - Surface: false, Measures: false, Quote: false
+🏠 [AUTO-SENSE PRE-IA] Superficie detectada: VEHICLE (Full: false)
+📊 [STATUS] Lead ec6f8895-abb1-4b22-80e8-6d514aed98dc → HUMAN_HANDOFF
+📖 [AGENT SESSION]
+    LeadID: ec6f8895-abb1-4b22-80e8-6d514aed98dc
+    Stage: HUMAN_HANDOFF
+    History: 1 msgs
+    Has Quote: false
+  
+🤖 [IA RESPONSE] Turno para lead ec6f8895-abb1-4b22-80e8-6d514aed98dc: "Es un caso especial que requiere un presupuesto técnico a medida. Un especialista en ploteo vehicular se contactará a la brevedad para asesorarte cómo seguir."
+🚫 [BLOCK] Bloqueo detectado: VEHICLE. Razón: No especificada
+📊 [STATUS] Lead ec6f8895-abb1-4b22-80e8-6d514aed98dc → HUMAN_HANDOFF
+🤖 AGENTE RESPUESTAS:
+  ➤ Es un caso especial que requiere un presupuesto técnico a medida. Un especialista en ploteo vehicular se contactará a la brevedad para asesorarte cómo seguir.
+
+📊 ESTADO FINAL DEL LEAD:
+Stage: HUMAN_HANDOFF
+✅ PRUEBA EXITOSA (Esperaba HUMAN_HANDOFF)
+======================================================
+
+
+======================================================
+🚀 INICIANDO PRUEBA: 3. HAPPY PATH (Pared + Instalación + Foto + Datos)
+======================================================
+
+
+---------------------------------
+💬 USUARIO (Msg 1): "Hola, quiero plotear una pared"
+---------------------------------
+DEBUG DATA - Surface: false, Measures: false, Quote: false
+🏠 [AUTO-SENSE PRE-IA] Superficie detectada: WALL (Full: false)
+📊 [STATUS] Lead 141eb581-be58-454c-9d8a-dbfef7656c6b → SURFACE_SELECTED
+📖 [AGENT SESSION]
+    LeadID: 141eb581-be58-454c-9d8a-dbfef7656c6b
+    Stage: SURFACE_SELECTED
+    History: 1 msgs
+    Has Quote: false
+  
+🤖 [IA RESPONSE] Turno para lead 141eb581-be58-454c-9d8a-dbfef7656c6b: "Para asegurarme de que el vinilo va a quedar perfecto, ¿me podés mandar una foto de la superficie?"
+Cleaned text: Para asegurarme de que el vinilo va a quedar perfecto, ¿me podés mandar una foto de la superficie?
+🤖 AGENTE RESPUESTAS:
+  ➤ Para asegurarme de que el vinilo va a quedar perfecto, ¿me podés mandar una foto de la superficie?
+
+---------------------------------
+💬 USUARIO (Msg 2): "Mide 3 metros de ancho por 2.5 de alto"
+---------------------------------
+DEBUG DATA - Surface: true, Measures: false, Quote: false
+📏 [AUTO-SENSE] Medidas detectadas en User: 3x2.5 (7.5m2)
+📊 [STATUS] Lead 141eb581-be58-454c-9d8a-dbfef7656c6b → MEASUREMENTS_RECEIVED
+📖 [AGENT SESSION]
+    LeadID: 141eb581-be58-454c-9d8a-dbfef7656c6b
+    Stage: MEASUREMENTS_RECEIVED
+    History: 3 msgs
+    Has Quote: false
+  
+🤖 [IA RESPONSE] Turno para lead 141eb581-be58-454c-9d8a-dbfef7656c6b: "Gracias por la información sobre las medidas. Ahora, por favor, envíame una foto de la superficie para validar su estado."
+Cleaned text: Gracias por la información sobre las medidas. Ahora, por favor, envíame una foto de la superficie para validar su estado.
+🤖 AGENTE RESPUESTAS:
+  ➤ Gracias por la información sobre las medidas. Ahora, por favor, envíame una foto de la superficie para validar su estado.
+
+---------------------------------
+💬 USUARIO (Msg 3): "Está impecable. Te mando la foto."
+---------------------------------
+DEBUG DATA - Surface: true, Measures: true, Quote: false
+DEBUG MEASURES: {"id":"4d192516-f4d7-4398-ae63-74d36d1f97d5","lead_id":"141eb581-be58-454c-9d8a-dbfef7656c6b","created_at":"2026-05-12T00:42:56.183287+00:00","updated_at":"2026-05-12T00:42:55.965+00:00","width_meters":3,"height_meters":2.5,"square_meters":7.5}
+📖 [AGENT SESSION]
+    LeadID: 141eb581-be58-454c-9d8a-dbfef7656c6b
+    Stage: MEASUREMENTS_RECEIVED
+    History: 5 msgs
+    Has Quote: false
+  
+🤖 [IA RESPONSE] Turno para lead 141eb581-be58-454c-9d8a-dbfef7656c6b: "Para continuar, necesito que me envíes la foto de la superficie. Una vez que la tenga, podremos avanzar con el diseño."
+Cleaned text: Para continuar, necesito que me envíes la foto de la superficie. Una vez que la tenga, podremos avanzar con el diseño.
+🤖 AGENTE RESPUESTAS:
+  ➤ Para continuar, necesito que me envíes la foto de la superficie. Una vez que la tenga, podremos avanzar con el diseño.
+
+---------------------------------
+💬 USUARIO (Msg 4): "SUBIR_FOTO"
+---------------------------------
+DEBUG DATA - Surface: true, Measures: true, Quote: false
+DEBUG MEASURES: {"id":"4d192516-f4d7-4398-ae63-74d36d1f97d5","lead_id":"141eb581-be58-454c-9d8a-dbfef7656c6b","created_at":"2026-05-12T00:42:56.183287+00:00","updated_at":"2026-05-12T00:42:55.965+00:00","width_meters":3,"height_meters":2.5,"square_meters":7.5}
+📖 [AGENT SESSION]
+    LeadID: 141eb581-be58-454c-9d8a-dbfef7656c6b
+    Stage: MEASUREMENTS_RECEIVED
+    History: 7 msgs
+    Has Quote: false
+  
+[AGENT] Descargando imagen manualmente para evitar Timeout AI SDK: https://placehold.co/600x400/png
+[AGENT] Imagen descargada exitosamente (7347 bytes)
+🤖 [IA RESPONSE] Turno para lead 141eb581-be58-454c-9d8a-dbfef7656c6b: "Se ve impecable, es una superficie ideal para el vinilo.
+
+¿Qué tipo de diseño prefieres? ¿Ya tenés el archivo listo, o te gustaría ver opciones de nuestro banco de imágenes, o prefieres un diseño personalizado?"
+Cleaned text: Se ve impecable, es una superficie ideal para el vinilo.
+
+¿Qué tipo de diseño prefieres? ¿Ya tenés el archivo listo, o te gustaría ver opciones de nuestro banco de imágenes, o prefieres un diseño personalizado?
+🤖 AGENTE RESPUESTAS:
+  ➤ Se ve impecable, es una superficie ideal para el vinilo.
+
+¿Qué tipo de diseño prefieres? ¿Ya tenés el archivo listo, o te gustaría ver opciones de nuestro banco de imágenes, o prefieres un diseño personalizado?
+
+---------------------------------
+💬 USUARIO (Msg 5): "Ya tengo el diseño listo para imprimir"
+---------------------------------
+DEBUG DATA - Surface: true, Measures: true, Quote: false
+DEBUG MEASURES: {"id":"4d192516-f4d7-4398-ae63-74d36d1f97d5","lead_id":"141eb581-be58-454c-9d8a-dbfef7656c6b","created_at":"2026-05-12T00:42:56.183287+00:00","updated_at":"2026-05-12T00:42:55.965+00:00","width_meters":3,"height_meters":2.5,"square_meters":7.5}
+🎨 [AUTO-SENSE PRE-IA] Escenario detectado: READY_FILE
+📊 [STATUS] Lead 141eb581-be58-454c-9d8a-dbfef7656c6b → PRINT_FILE_SCENARIO_SELECTED
+📖 [AGENT SESSION]
+    LeadID: 141eb581-be58-454c-9d8a-dbfef7656c6b
+    Stage: PRINT_FILE_SCENARIO_SELECTED
+    History: 9 msgs
+    Has Quote: false
+  
+🤖 [IA RESPONSE] Turno para lead 141eb581-be58-454c-9d8a-dbfef7656c6b: "Perfecto, gracias por la información. Para proceder, ¿necesitás que nosotros nos encarguemos de la instalación, o preferís retirarlo por el local e instalarlo vos mismo?"
+📁 [READY_FILE] Escenario seleccionado pero sin archivo. Solicitando.
+Cleaned text: ¡Perfecto! Para avanzar necesito que me envíes el archivo de diseño. Puede ser en formato JPG, PNG, PDF, AI o EPS. Lo más importante es que tenga buena resolución para que la impresión quede perfecta.
+
+Enviá el archivo directamente por acá.
+🤖 AGENTE RESPUESTAS:
+  ➤ ¡Perfecto! Para avanzar necesito que me envíes el archivo de diseño. Puede ser en formato JPG, PNG, PDF, AI o EPS. Lo más importante es que tenga buena resolución para que la impresión quede perfecta.
+
+Enviá el archivo directamente por acá.
+
+---------------------------------
+💬 USUARIO (Msg 6): "Necesito que vengan a instalarlo"
+---------------------------------
+DEBUG DATA - Surface: true, Measures: true, Quote: false
+DEBUG MEASURES: {"id":"4d192516-f4d7-4398-ae63-74d36d1f97d5","lead_id":"141eb581-be58-454c-9d8a-dbfef7656c6b","created_at":"2026-05-12T00:42:56.183287+00:00","updated_at":"2026-05-12T00:42:55.965+00:00","width_meters":3,"height_meters":2.5,"square_meters":7.5}
+📖 [AGENT SESSION]
+    LeadID: 141eb581-be58-454c-9d8a-dbfef7656c6b
+    Stage: PRINT_FILE_SCENARIO_SELECTED
+    History: 11 msgs
+    Has Quote: false
+  
+🤖 [IA RESPONSE] Turno para lead 141eb581-be58-454c-9d8a-dbfef7656c6b: "He tomado nota de que necesitas instalación. 
+
+Ahora, por favor, comparte tu número de teléfono para poder coordinar el servicio."
+Cleaned text: He tomado nota de que necesitas instalación. 
+
+Ahora, por favor, comparte tu número de teléfono para poder coordinar el servicio.
+🤖 AGENTE RESPUESTAS:
+  ➤ He tomado nota de que necesitas instalación. 
+
+Ahora, por favor, comparte tu número de teléfono para poder coordinar el servicio.
+
+---------------------------------
+💬 USUARIO (Msg 7): "Mi teléfono es +598 99 555 666 y la dirección es Av. Italia 1234"
+---------------------------------
+DEBUG DATA - Surface: true, Measures: true, Quote: true
+DEBUG MEASURES: {"id":"4d192516-f4d7-4398-ae63-74d36d1f97d5","lead_id":"141eb581-be58-454c-9d8a-dbfef7656c6b","created_at":"2026-05-12T00:42:56.183287+00:00","updated_at":"2026-05-12T00:42:55.965+00:00","width_meters":3,"height_meters":2.5,"square_meters":7.5}
+📖 [AGENT SESSION]
+    LeadID: 141eb581-be58-454c-9d8a-dbfef7656c6b
+    Stage: PRINT_FILE_SCENARIO_SELECTED
+    History: 13 msgs
+    Has Quote: true
+  
+🤖 [IA RESPONSE] Turno para lead 141eb581-be58-454c-9d8a-dbfef7656c6b: "Gracias por la información. Confirmo que tu teléfono es +598 99 555 666 y la dirección es Av. Italia 1234.
+
+Ahora, procederé a generar la cotización."
+Cleaned text: Gracias por la información. Confirmo que tu teléfono es +598 99 555 666 y la dirección es Av. Italia 1234.
+
+Ahora, procederé a generar la cotización.
+🤖 AGENTE RESPUESTAS:
+  ➤ Gracias por la información. Confirmo que tu teléfono es +598 99 555 666 y la dirección es Av. Italia 1234.
+
+Ahora, procederé a generar la cotización.
+
+📊 ESTADO FINAL DEL LEAD:
+Stage: PRINT_FILE_SCENARIO_SELECTED
+❌ PRUEBA FALLIDA (Esperaba QUOTE_GENERATED, obtuvo PRINT_FILE_SCENARIO_SELECTED)
+======================================================
+
+
+======================================================
+🚀 INICIANDO PRUEBA: 4. Foto Waived
+======================================================
+
+
+---------------------------------
+💬 USUARIO (Msg 1): "Hola, quiero plotear mi heladera"
+---------------------------------
+DEBUG DATA - Surface: false, Measures: false, Quote: false
+🏠 [AUTO-SENSE PRE-IA] Superficie detectada: FRIDGE (Full: false)
+📊 [STATUS] Lead c5e79cac-16c5-48c5-aa17-ffb6b3230b0c → SURFACE_SELECTED
+📖 [AGENT SESSION]
+    LeadID: c5e79cac-16c5-48c5-aa17-ffb6b3230b0c
+    Stage: SURFACE_SELECTED
+    History: 1 msgs
+    Has Quote: false
+  
+🤖 [IA RESPONSE] Turno para lead c5e79cac-16c5-48c5-aa17-ffb6b3230b0c: "Para asegurarme de que el vinilo va a quedar perfecto, ¿me podés mandar una foto de la heladera?"
+Cleaned text: Para asegurarme de que el vinilo va a quedar perfecto, ¿me podés mandar una foto de la heladera?
+🤖 AGENTE RESPUESTAS:
+  ➤ Para asegurarme de que el vinilo va a quedar perfecto, ¿me podés mandar una foto de la heladera?
+
+---------------------------------
+💬 USUARIO (Msg 2): "Mide 60cm x 1.80m"
+---------------------------------
+DEBUG DATA - Surface: true, Measures: false, Quote: false
+📏 [AUTO-SENSE] Medidas detectadas en User: 0.6x1.8 (1.08m2)
+📊 [STATUS] Lead c5e79cac-16c5-48c5-aa17-ffb6b3230b0c → MEASUREMENTS_RECEIVED
+📖 [AGENT SESSION]
+    LeadID: c5e79cac-16c5-48c5-aa17-ffb6b3230b0c
+    Stage: MEASUREMENTS_RECEIVED
+    History: 3 msgs
+    Has Quote: false
+  
+🤖 [IA RESPONSE] Turno para lead c5e79cac-16c5-48c5-aa17-ffb6b3230b0c: "Agradezco que hayas compartido las medidas. Ahora, ¿me puedes enviar la foto de la heladera?"
+Cleaned text: Agradezco que hayas compartido las medidas. Ahora, ¿me puedes enviar la foto de la heladera?
+🤖 AGENTE RESPUESTAS:
+  ➤ Agradezco que hayas compartido las medidas. Ahora, ¿me puedes enviar la foto de la heladera?
+
+---------------------------------
+💬 USUARIO (Msg 3): "No puedo mandarte foto ahora"
+---------------------------------
+DEBUG DATA - Surface: true, Measures: true, Quote: false
+DEBUG MEASURES: {"id":"32635092-cfe3-4fae-9165-68297cb5dd96","lead_id":"c5e79cac-16c5-48c5-aa17-ffb6b3230b0c","created_at":"2026-05-12T00:43:36.822988+00:00","updated_at":"2026-05-12T00:43:36.604+00:00","width_meters":0.6,"height_meters":1.8,"square_meters":1.08}
+📖 [AGENT SESSION]
+    LeadID: c5e79cac-16c5-48c5-aa17-ffb6b3230b0c
+    Stage: MEASUREMENTS_RECEIVED
+    History: 5 msgs
+    Has Quote: false
+  
+🤖 [IA RESPONSE] Turno para lead c5e79cac-16c5-48c5-aa17-ffb6b3230b0c: "Entiendo. Asumiré que la heladera está en condiciones aptas para el vinilo. 
+
+Ahora, ¿ya tenés el archivo listo, o te podemos ofrecer opciones de nuestro banco de imágenes, o preferís un diseño personalizado?"
+Cleaned text: Entiendo. Asumiré que la heladera está en condiciones aptas para el vinilo. 
+
+Ahora, ¿ya tenés el archivo listo, o te podemos ofrecer opciones de nuestro banco de imágenes, o preferís un diseño personalizado?
+🤖 AGENTE RESPUESTAS:
+  ➤ Entiendo. Asumiré que la heladera está en condiciones aptas para el vinilo. 
+
+Ahora, ¿ya tenés el archivo listo, o te podemos ofrecer opciones de nuestro banco de imágenes, o preferís un diseño personalizado?
+
+---------------------------------
+💬 USUARIO (Msg 4): "Diseño personalizado de mandalas"
+---------------------------------
+DEBUG DATA - Surface: true, Measures: true, Quote: false
+DEBUG MEASURES: {"id":"32635092-cfe3-4fae-9165-68297cb5dd96","lead_id":"c5e79cac-16c5-48c5-aa17-ffb6b3230b0c","created_at":"2026-05-12T00:43:36.822988+00:00","updated_at":"2026-05-12T00:43:36.604+00:00","width_meters":0.6,"height_meters":1.8,"square_meters":1.08}
+🎨 [AUTO-SENSE PRE-IA] Escenario detectado: CUSTOM_DESIGN
+📊 [STATUS] Lead c5e79cac-16c5-48c5-aa17-ffb6b3230b0c → PRINT_FILE_SCENARIO_SELECTED
+📖 [AGENT SESSION]
+    LeadID: c5e79cac-16c5-48c5-aa17-ffb6b3230b0c
+    Stage: PRINT_FILE_SCENARIO_SELECTED
+    History: 7 msgs
+    Has Quote: false
+  
+🤖 [IA RESPONSE] Turno para lead c5e79cac-16c5-48c5-aa17-ffb6b3230b0c: "Perfecto, he registrado que deseas un diseño personalizado de mandalas. 
+
+Ahora, ¿te gustaría que nosotros nos encarguemos de la instalación, o preferís retirarlo por el local e instalarlo vos mismo?"
+Cleaned text: Perfecto, he registrado que deseas un diseño personalizado de mandalas. 
+
+Ahora, ¿te gustaría que nosotros nos encarguemos de la instalación, o preferís retirarlo por el local e instalarlo vos mismo?
+🤖 AGENTE RESPUESTAS:
+  ➤ Perfecto, he registrado que deseas un diseño personalizado de mandalas. 
+
+Ahora, ¿te gustaría que nosotros nos encarguemos de la instalación, o preferís retirarlo por el local e instalarlo vos mismo?
+
+---------------------------------
+💬 USUARIO (Msg 5): "Lo retiro yo"
+---------------------------------
+DEBUG DATA - Surface: true, Measures: true, Quote: false
+DEBUG MEASURES: {"id":"32635092-cfe3-4fae-9165-68297cb5dd96","lead_id":"c5e79cac-16c5-48c5-aa17-ffb6b3230b0c","created_at":"2026-05-12T00:43:36.822988+00:00","updated_at":"2026-05-12T00:43:36.604+00:00","width_meters":0.6,"height_meters":1.8,"square_meters":1.08}
+📖 [AGENT SESSION]
+    LeadID: c5e79cac-16c5-48c5-aa17-ffb6b3230b0c
+    Stage: PRINT_FILE_SCENARIO_SELECTED
+    History: 9 msgs
+    Has Quote: false
+  
+🤖 [IA RESPONSE] Turno para lead c5e79cac-16c5-48c5-aa17-ffb6b3230b0c: "He confirmado que eres tú quien lo retira. 
+
+Ahora que tenemos toda la información, procederé a generar la cotización. Un momento, por favor."
+[QUOTE-GATE] {
+  leadId: 'c5e79cac-16c5-48c5-aa17-ffb6b3230b0c',
+  hasMeasurements: true,
+  hasSurface: true,
+  hasScenario: false,
+  hasInstall: true,
+  localW: 0.6,
+  localH: 1.8,
+  localM2: 1.08,
+  localSurfaceType: 'FRIDGE',
+  localScenario: null,
+  localInstall: false,
+  contextSurfaceType: 'FRIDGE',
+  contextPrintFileScenario: null,
+  contextInstallationRequired: false,
+  pMatch: true
+}
+⚠️ [REVENT] Cotización bloqueada: flujo incompleto. {
+  leadId: 'c5e79cac-16c5-48c5-aa17-ffb6b3230b0c',
+  missing: {
+    measurements: false,
+    surface: false,
+    scenario: true,
+    install: false,
+    photo: true
+  },
+  localM2: 1.08,
+  localSurfaceType: 'FRIDGE',
+  localScenario: null,
+  localInstall: false
+}
+Cleaned text: Antes de enviarte el presupuesto necesito confirmar el diseño: ¿ya tenés el archivo listo, o te podemos ofrecer opciones de nuestro banco de imágenes, o preferís un diseño personalizado?
+🤖 AGENTE RESPUESTAS:
+  ➤ Antes de enviarte el presupuesto necesito confirmar el diseño: ¿ya tenés el archivo listo, o te podemos ofrecer opciones de nuestro banco de imágenes, o preferís un diseño personalizado?
+
+📊 ESTADO FINAL DEL LEAD:
+Stage: PRINT_FILE_SCENARIO_SELECTED
+❌ PRUEBA FALLIDA (Esperaba QUOTE_GENERATED, obtuvo PRINT_FILE_SCENARIO_SELECTED)
+======================================================
+

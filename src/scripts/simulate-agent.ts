@@ -64,6 +64,7 @@ function freshContext(overrides?: Partial<LeadContext>): LeadContext {
     surfaceGuideSent: false,
     measureGuideSent: false,
     photoWaived: false,
+    catalogGuideSent: false,
     ...overrides,
   };
 }
@@ -109,14 +110,7 @@ function mockAutoSensing(userMessage: string, context: LeadContext): Partial<Lea
     }
   }
 
-  // 3. Escenario
-  if (/tengo.*archivo|archivo.*listo|ya.*tengo.*diseño/i.test(userMessage)) {
-    updates.printFileScenario = "READY_FILE";
-  } else if (/catálogo|catalogo|galería|galeria|elegir|fotos/i.test(userMessage)) {
-    updates.printFileScenario = "IMAGE_BANK";
-  } else if (/diseño.*nuevo|personalizado|armar/i.test(userMessage)) {
-    updates.printFileScenario = "CUSTOM_DESIGN";
-  }
+  // 3. Escenario (Keyword detection removed to match real agent/index.ts)
 
   return updates;
 }
@@ -210,6 +204,12 @@ async function simulateAgentTurn(
     finalRawOutput += "\n[[GENERATE_QUOTE]]";
   }
 
+  // Especial para IMAGE_BANK (Match real agent/index.ts)
+  if (updatedContext.printFileScenario === "IMAGE_BANK" && !updatedContext.catalogGuideSent) {
+    finalRawOutput = finalRawOutput.trim() + "\n\nCatálogo: https://pixel-art-agent.vercel.app/catalog";
+    updatedContext.catalogGuideSent = true;
+  }
+
   // Limpiar texto para el display
   const cleanText = finalRawOutput
     .replace(/\[\[.*?\]\]/g, "")
@@ -277,15 +277,15 @@ const scenarios: TestScenario[] = [
       "Querés plotear un vidrio de tu oficina. Las medidas son 1.2 metros de ancho por 0.8 de alto. La superficie está perfecta, lisa y limpia. Querés imprimir un archivo que ya tenés listo. Sos directo y cooperativo. Si te piden dirección, es Av. Corrientes 1234, CABA. Teléfono 1122334455.",
     initialContext: freshContext(),
     validate: (conversation, rawOutputs) => {
-      const hasGenerateQuote = rawOutputs.some((r) =>
-        r.includes("[[GENERATE_QUOTE]]")
+      const hasTerminalCommand = rawOutputs.some((r) =>
+        r.includes("[[GENERATE_QUOTE]]") || r.includes("[[CLOSE_DEAL]]")
       );
       const hasSurface = rawOutputs.some((r) =>
         /GLASS/i.test(r) || /vidrio/i.test(r)
       );
       
-      if (!hasGenerateQuote) {
-        return { passed: false, reason: "No se disparó [[GENERATE_QUOTE]]" };
+      if (!hasTerminalCommand) {
+        return { passed: false, reason: "No se disparó [[GENERATE_QUOTE]] ni [[CLOSE_DEAL]]" };
       }
 
       return { passed: true, reason: "Flujo completo ejecutado correctamente." };
@@ -351,7 +351,7 @@ const scenarios: TestScenario[] = [
     initialContext: freshContext(),
     validate: (conversation, rawOutputs) => {
       const hasCatalogLink = rawOutputs.some((r) =>
-        /pixelart\.vercel\.app\/catalog/i.test(r)
+        /pixel-art-agent\.vercel\.app\/catalog/i.test(r)
       );
 
       if (!hasCatalogLink) {

@@ -70,6 +70,9 @@ export interface LeadContext {
 
   /** Si el cliente explícitamente indicó que no puede enviar foto */
   photoWaived: boolean;
+
+  /** Si ya se envió el link al catálogo en esta sesión */
+  catalogGuideSent: boolean;
 }
 
 /* ============================================

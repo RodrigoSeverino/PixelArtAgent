@@ -227,6 +227,10 @@ export async function processAgentTurn(
   let localW: number | null = null;
   let localH: number | null = null;
   let localM2: number | null = null;
+  let localInstall: boolean | null = null;
+  let localScenario: string | null = null;
+  let localSurfaceType: string | null = context.surfaceType ?? null;
+  let isFullObject = context.isFullObject ?? false;
 
   // --- 0. PRE-EXTRACCIÓN (DEL MENSAJE DEL USUARIO) ---
   const userMeasures = extractMeasurementsFromText(incomingMsg.text);
@@ -273,8 +277,6 @@ export async function processAgentTurn(
 
   // --- AUTO-SENSE SURFACE (DEL MENSAJE DEL USUARIO) ---
   // Detectar superficie antes de la IA para que el prompt tenga el contexto actualizado
-  let localSurfaceType = context.surfaceType ?? null;
-  let isFullObject = context.isFullObject ?? false;
   const userSurface = extractSurfaceFromText(incomingMsg.text);
   if (userSurface) {
     localSurfaceType = userSurface.type;
@@ -304,7 +306,7 @@ export async function processAgentTurn(
     }
   }
 
-  let localScenario = context.printFileScenario ?? null;
+  localScenario = context.printFileScenario ?? null;
   // Scenario auto-detection removed to avoid false positives. 
   // We rely on LLM commands [[SET_PRINT:...]] for better accuracy.
 
